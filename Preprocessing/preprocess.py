@@ -1,7 +1,9 @@
+# Database a 
 
-# We map phoneme representations defined in dataset a to the ones of Sejnowski and Rosenberg 
-# in their 1987 "Parallel Networks that Learn to Pronounce English Text."
-phoneme_map = 
+
+# We map phoneme representations defined in dataset a to the ones outlined by Sejnowski and Rosenberg 
+# in their 1987 paper "Parallel Networks that Learn to Pronounce English Text."
+phoneme_map = \
 {
 				# FROM		TO 
 				# (Example words given in dataset a and S&R's NETTalk paper respectively)
@@ -26,7 +28,7 @@ phoneme_map =
 	'ch': 'C',	# _ch_eese,	_ch_in	
 	'd': 'd',	# _d_ee,	_d_ebt
 	'dh': 'D',	# _th_ee,	_th_is
-	'f': 'f'	# _f_ee,	_f_in
+	'f': 'f',	# _f_ee,	_f_in
 	'g': 'g',	# _g_reen,	_g_uess
 	'hh': 'h',	# _h_e,		_h_ead
 	'jh': 'J',	# _g_ee,	_g_in
@@ -55,21 +57,22 @@ phoneme_map =
 # - context_dependent, which are unmapped phonemes that can be salvaged from dataset a
 #   using (ending) position and (lack of) stress.
 
-unmapped = 
+unmapped = \
 {						# S&R examples:
 	# diphthongs		
-	['y', 'uw']: 'Y',	# c_u_te
+	'yu': 'Y',	# c_u_te
 	# clusters
-	['k', 'sh']: 'K'	# se_x_ual
-	['k', 's']: 'X',	# e_xc_ess
-	['g', 'z']: '#', 	# e_x_amine
-	['w', 'ah']: '*', 	# _o_ne
-	['t', 's']: '!'		# na_z_i
-	['k', 'w']: 'Q'		# _qu_est
+	'kS': 'K',	# se_x_ual
+	'ks': 'X',	# e_xc_ess
+	'gz': '#', 	# e_x_amine
+	'w^': '*', 	# _o_ne
+	'ts': '!',	# na_z_i
+	'kw': 'Q'	# _qu_est
 }
 
+'''
 # These features described in S&R can be teased out of dataset a given additional context.
-context_dependent =
+context_dependent = \
 {
 	# TODO: Replace 'END' with the actual character.
 	# TODO: Replace the dataset a representations with S&R
@@ -79,3 +82,74 @@ context_dependent =
 	['m', 'END']: 'M',				# absy_m_
 	['n', 'END']: 'N'				# butto_n_
 }
+'''
+
+class word:
+	def __init__(self, letters, phonemes, stresses):
+		self.letters = letters
+		self.phonemes = phonemes
+		self.stresses = stresses
+		self.syllable_count = len(stresses)
+
+def preprocess():
+	# To be filled with references to word objects.
+	corpus = []
+
+	alphabet = 'abcdefghijklmnopqrstuvwxyz'
+	numeral = (0, 1, 2)
+	# Database a
+	with open('Raw/a.txt', 'r') as a:
+		for line in a:
+			# Ignore comments
+			if line.startswith(';;;'): 
+				continue
+
+			line = line.lower().strip()
+			word, pronunciation = line.split('  ')
+			pronunciation = pronunciation.lstrip() # Sometimes, the separator was three spaces instead of two.
+			if '(' in word: 
+				continue	# Skip homonyms.
+			letters = ''
+			phonemes = ''
+			stresses = []
+			# Load letters.
+			for ch in word:
+				letters += ch if ch in alphabet else ''
+			# Load pronunciations.
+			current = ''
+			for ch in pronunciation:
+				if ch == ' ':		# The current phoneme just ended.
+					# Map to S&R representation and add to phonemes.
+					phonemes += phoneme_map[current]
+					current = ''
+				elif ch in ('0', '1', '2'):	# The current phoneme is about to end. Add the stress.
+					stresses += ch
+				else:
+					current += ch	# Phoneme currently being built.
+			# Add last phoneme.
+			phonemes += phoneme_map[current]
+			print('Adding {}, {}, and {}'.format(letters, phonemes, stresses))
+	# Database b
+
+preprocess()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
