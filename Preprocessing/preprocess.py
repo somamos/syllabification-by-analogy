@@ -84,11 +84,34 @@ context_dependent = \
 '''
 
 class Word:
+	def append_self(self, arr):
+		arr.append('{} {} {}\n'.format(self.letters, self.phonemes, self.syllable_boundary_encodings))
+		return arr
+
 	def __init__(self, letters, phonemes, stresses):
 		self.letters = letters
 		self.phonemes = phonemes
 		self.stresses = stresses
 		self.syllable_count = len(stresses)
+	# Database a had the stresses per syllable.
+	# Database b has the encoding patterns.
+	# Combine them here.
+	# Return true when encoding successful, else false.
+	def inject_stresses(self, encoding_pattern):
+		slots = encoding_pattern.count('_')
+		if slots != self.syllable_count:
+			print('Warning. Word {} had {} stresses in database a but {} in b.'.format(self.letters, self.syllable_count, slots))
+			return False
+		final_encoding = ''
+		index = 0
+		for ch in encoding_pattern:
+			if(ch == '_'):
+				final_encoding += self.stresses[index] # Adds the stress associated with that syllable
+				index += 1
+			else:
+				final_encoding += ch # Adds > or <
+		self.syllable_boundary_encodings = final_encoding
+		return True
 
 def preprocess():
 	# To be filled with references to word objects.
@@ -136,7 +159,7 @@ def preprocess():
 					phonemes = phonemes.replace(key, unmapped[key])
 					#print('Simplifying {} to {}'.format(old, phonemes))
 			corpus.append(Word(letters, phonemes, stresses))
-			#print('Added {}, {}, and {}'.format(letters, phonemes, stresses))
+			print('Added {}, {}, and {} to corpus.'.format(letters, phonemes, stresses))
 	print(len(corpus))
 
 
@@ -148,15 +171,49 @@ def preprocess():
 			line = line.split(' ')
 			for word in line:
 				letters = ''
-				syllable_boundary_encodings = 1
+				syllable_boundary_encodings = ''
 				word.strip() # Remove any extra spaces.
 				reached_nucleus = False
-				for ch in word:
-					if ch in alphabet:
-						letters += ch
-					elif ch == '-':
-						reached_nucleus = False
-				print('{} had {} syllables.'.format(letters, syllable_boundary_encodings))
+				for index, ch in enumerate(word):
+					if ch == '-':
+						reached_nucleus = False # New syllable. Reset nucleus flag.
+						continue
+					if ch not in alphabet:
+						# Just skip words containing non-alphanumeric chars.
+						continue
+
+					letters += ch
+					# Every character in a syllable points to the first vowel.
+
+					# Handle aeiou.
+					if not reached_nucleus:
+						# Handle common vowels.
+						if ch in 'aeiou':
+							# This is the nucleus. Insert char to be replaced with stress level.
+							syllable_boundary_encodings += '_' 
+							reached_nucleus = True
+						# Handle y, which is a vowel when exclusively bordered by nonvowels.
+						elif ch == 'y':
+							# The "not reached_nucleus" condition above guarantees left border validity.
+							# Right border is valid when at the end of the word,
+							# OR when the next letter is nonvowel.
+							if (index == len(word) - 1) or \
+								(index < len(word) - 1 and (not (word[index + 1] in 'aeiou'))):
+								syllable_boundary_encodings += '_' 
+								reached_nucleus = True
+								continue
+							syllable_boundary_encodings += '>' # This y is now proven to be a consonant.
+						else:
+							# A consonant before the nucleus.
+							syllable_boundary_encodings += '>' # Point towards future nucleus.
+					else: 
+						# We've reached the nucleus already. Point the other way.
+						syllable_boundary_encodings += '<'
+
+				#print('{} encoded to {}.'.format(letters, syllable_boundary_encodings))
+				# Sanity check: These should always be equal.
+				if(len(letters) != len(syllable_boundary_encodings)):
+					print('{} does not map evenly on to {}'.format(letters, syllable_boundary_encodings))
 				dataset_b[letters] = syllable_boundary_encodings
 	print(len(dataset_b.keys()))
 
@@ -164,10 +221,33 @@ def preprocess():
 	final = []
 	keys = dataset_b.keys()
 	for word in corpus:
-		if word.letters in keys:
-			final.append(word)
-			print('Found {} in dataset b'.format(word.letters))
+		if word.letters in keys and len(word.letters) > 1:
+			if(word.inject_stresses(dataset_b[word.letters])):
+				final.append(word)
+			#print('Found {} in dataset b'.format(word.letters))
 	print(len(final)) 
+
+	# Finally, print the dataset.
+	out = []
+	errors = []
+	count = 0
+	total = 0
+	for word in final:
+		# Words with valid 1:1 mappings:
+		if(len(word.syllable_boundary_encodings) == len(word.letters) == len(word.phonemes)): 
+			out = word.append_self(out)
+			count += 1
+		# Words without valid 1:1 mappings:
+		else:
+			errors = word.append_self(errors)
+		total += 1
+	print('{} words had valid mappings, {} didn\'t'.format(count, total - count))
+	# VALID WORDS:
+	with open('output.txt', 'w+') as c:
+		c.writelines(out)
+	with open('errors.txt', 'w+') as c:
+		c.writelines(errors)
+
 preprocess()
 
 
