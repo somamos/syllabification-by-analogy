@@ -1,5 +1,4 @@
-# Database a 
-
+# coding: latin-1
 
 # We map phoneme representations defined in dataset a to the ones outlined by Sejnowski and Rosenberg 
 # in their 1987 paper "Parallel Networks that Learn to Pronounce English Text."
@@ -94,12 +93,12 @@ class Word:
 def preprocess():
 	# To be filled with references to word objects.
 	corpus = []
+	database_b = {}
 
 	alphabet = 'abcdefghijklmnopqrstuvwxyz'
-	numeral = (0, 1, 2)
 
-	# Database a
-	with open('Raw/a.txt', 'r') as a:
+	# Database a has pronunciation information.
+	with open('Raw/a.txt', 'r', encoding='latin-1') as a:
 		for line in a:
 			# Ignore comments
 			if line.startswith(';;;'): 
@@ -135,10 +134,30 @@ def preprocess():
 				if key in phonemes:
 					old = phonemes
 					phonemes = phonemes.replace(key, unmapped[key])
-					print('Simplifying {} to {}'.format(old, phonemes))
+					#print('Simplifying {} to {}'.format(old, phonemes))
 			corpus.append(Word(letters, phonemes, stresses))
-			print('Added {}, {}, and {}'.format(letters, phonemes, stresses))
-	# Database b
+			#print('Added {}, {}, and {}'.format(letters, phonemes, stresses))
+	print(len(corpus))
+
+
+	# Database b has syllable boundary information.
+	with open('Raw/b.txt', 'r', encoding='latin-1') as b:
+		for line in b:
+			line = line.lower()
+			# Certain lines consist of multiple words.
+			line = line.split(' ')
+			for word in line:
+				letters = ''
+				syllable_boundary_encodings = 1
+				word.strip() # Remove any extra spaces.
+				for ch in word:
+					if ch in alphabet:
+						letters += ch
+					elif ch == '-':
+						syllable_boundary_encodings += 1
+				print('{} had {} syllables.'.format(letters, syllable_boundary_encodings))
+				database_b[word] = syllable_boundary_encodings
+	print(len(database_b.keys()))
 
 preprocess()
 
