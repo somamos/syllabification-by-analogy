@@ -84,7 +84,7 @@ context_dependent = \
 }
 '''
 
-class word:
+class Word:
 	def __init__(self, letters, phonemes, stresses):
 		self.letters = letters
 		self.phonemes = phonemes
@@ -97,6 +97,7 @@ def preprocess():
 
 	alphabet = 'abcdefghijklmnopqrstuvwxyz'
 	numeral = (0, 1, 2)
+
 	# Database a
 	with open('Raw/a.txt', 'r') as a:
 		for line in a:
@@ -128,7 +129,15 @@ def preprocess():
 					current += ch	# Phoneme currently being built.
 			# Add last phoneme.
 			phonemes += phoneme_map[current]
-			print('Adding {}, {}, and {}'.format(letters, phonemes, stresses))
+
+			# Handle unmapped phonemes.
+			for key in unmapped.keys():
+				if key in phonemes:
+					old = phonemes
+					phonemes = phonemes.replace(key, unmapped[key])
+					print('Simplifying {} to {}'.format(old, phonemes))
+			corpus.append(Word(letters, phonemes, stresses))
+			print('Added {}, {}, and {}'.format(letters, phonemes, stresses))
 	# Database b
 
 preprocess()
