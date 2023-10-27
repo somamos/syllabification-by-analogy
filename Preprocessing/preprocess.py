@@ -23,7 +23,7 @@ phoneme_map =
 	'uw': 'u',	# t_wo_,	l_u_te
 	# CONSONANTS
 	'b': 'b', 	# _b_e, 	_b_et
-	'ch': 'C',	# _ch_eese, _ch_in	
+	'ch': 'C',	# _ch_eese,	_ch_in	
 	'd': 'd',	# _d_ee,	_d_ebt
 	'dh': 'D',	# _th_ee,	_th_is
 	'f': 'f'	# _f_ee,	_f_in
@@ -43,7 +43,7 @@ phoneme_map =
 	'th': 'T',	# _th_eta,	_th_in
 	'v': 'v',	# _v_ee,	_v_est
 	'w': 'w',	# _w_e,		_w_et
-	'y': 'y',	# _y_ield, _y_et
+	'y': 'y',	# _y_ield,	_y_et
 	'z': 'z',	# _z_ee,	_z_oo
 	'zh': 'Z',	# sei_z_ure, lei_s_ure
 }
@@ -53,7 +53,7 @@ phoneme_map =
 # The other 11 belong to two categories:
 # - unmapped, which represent two combined phonemes from the 39.
 # - context_dependent, which are unmapped phonemes that can be salvaged from dataset a
-#   using (lack of) stress and (ending) position.
+#   using (ending) position and (lack of) stress.
 
 unmapped = 
 {						# S&R examples:
