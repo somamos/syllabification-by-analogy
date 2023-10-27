@@ -93,11 +93,11 @@ class Word:
 def preprocess():
 	# To be filled with references to word objects.
 	corpus = []
-	database_b = {}
+	dataset_b = {}
 
 	alphabet = 'abcdefghijklmnopqrstuvwxyz'
 
-	# Database a has pronunciation information.
+	# Dataset a has pronunciation information.
 	with open('Raw/a.txt', 'r', encoding='latin-1') as a:
 		for line in a:
 			# Ignore comments
@@ -140,7 +140,7 @@ def preprocess():
 	print(len(corpus))
 
 
-	# Database b has syllable boundary information.
+	# Dataset b has syllable boundary information.
 	with open('Raw/b.txt', 'r', encoding='latin-1') as b:
 		for line in b:
 			line = line.lower()
@@ -150,15 +150,24 @@ def preprocess():
 				letters = ''
 				syllable_boundary_encodings = 1
 				word.strip() # Remove any extra spaces.
+				reached_nucleus = False
 				for ch in word:
 					if ch in alphabet:
 						letters += ch
 					elif ch == '-':
-						syllable_boundary_encodings += 1
+						reached_nucleus = False
 				print('{} had {} syllables.'.format(letters, syllable_boundary_encodings))
-				database_b[word] = syllable_boundary_encodings
-	print(len(database_b.keys()))
+				dataset_b[letters] = syllable_boundary_encodings
+	print(len(dataset_b.keys()))
 
+	# Combine the datasets.
+	final = []
+	keys = dataset_b.keys()
+	for word in corpus:
+		if word.letters in keys:
+			final.append(word)
+			print('Found {} in dataset b'.format(word.letters))
+	print(len(final)) 
 preprocess()
 
 
