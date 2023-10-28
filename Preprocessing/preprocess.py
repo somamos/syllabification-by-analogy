@@ -85,27 +85,6 @@ context_dependent = \
 }
 '''
 
-# These are vowels as defined by S&R. They'll help us populate the dummy letters.
-vowels = \
-	[
-	'a',
-	'A',
-	'c',
-	'@',
-	'^',
-	'W',
-	'i',
-	'I',
-	'o',
-	'O',
-	'E',
-	'R',
-	'e',
-	'U',
-	'u'
-	]
-
-
 class Word:
 	def append_self(self, arr):
 		arr.append('{:20} {:20} {:20}\n'.format(self.letters, self.phonemes, self.syllable_boundary_encodings))
@@ -258,7 +237,7 @@ def preprocess():
 	mismatched = 0	# The word was found in b, but it had a different number of syllables.
 	unmatched = 0 # The word was not found in b.
 	unmatcheds = [] # To attempt to salvage.
-	duplicates = 0 # These catch duplicate words from disabling "Skip homonyms" above.
+	duplicates = 0 # These catch words that were duplicated by disabling "Skip homonyms" above.
 	# More specifically, we give a's duplicates a chance to merge with b, without 
 	# erroneously adding them twice if both fit.
 
@@ -305,25 +284,28 @@ def preprocess():
 			part = fix[0]
 			addendum = fix[1]
 			if not letters.endswith(part):
+				continue # Skip because doesn't match.
+
+			truncated = letters[:- len(part)] # Remove matching part.
+
+			if (word.letters in final_spellings) or (truncated not in keys):
+				continue # Skip because duplicate, or because removal didn't help.
+
+			# Skip because when truncated ends in vowel, addendum's encoding is wrong.
+			if (truncated[-1] in 'aeiouy') and (part.startswith('er')):
 				continue
 
-			# Found a match. Now search b for the truncated version of the matching word:
-			truncated = letters[:- len(part)]
-			if (word.letters not in final_spellings) and (truncated in keys):
-				# Fixing "er" and "ers" causes broken pattern when ending letter is vowel.
-				if (truncated[-1] in 'aeiouy') and (part.startswith('er')):
-					continue
-
-				# Inject the stresses with the augmented pattern
-				if(word.inject_stresses(dataset_b[truncated] + addendum)):
-					final.append(word)
-					# Prevent duplicate unmatched homonyms from getting entered twice.
-					final_spellings.add(word.letters)
-					salvaged += 1
-					# Iterate the counter.
-					fix_counter[part] = fix_counter.get(part, 0) + 1
-					#print('Salvaged {} with modified encoding {}'.format(word.letters, word.syllable_boundary_encodings))
-				# TODO: Replacements...
+			# Valid fix found. 
+			# Inject the stresses with the augmented pattern
+			if(word.inject_stresses(dataset_b[truncated] + addendum)):
+				final.append(word)
+				# Prevent duplicate unmatched homonyms from getting entered twice.
+				final_spellings.add(word.letters)
+				salvaged += 1
+				# Iterate the counter.
+				fix_counter[part] = fix_counter.get(part, 0) + 1
+				#print('Salvaged {} with modified encoding {}'.format(word.letters, word.syllable_boundary_encodings))
+			# TODO: Replacements...
 	print(fix_counter)
 	print('Of the {} unmatched, {} were salvaged.'.format(unmatched, salvaged))
 
