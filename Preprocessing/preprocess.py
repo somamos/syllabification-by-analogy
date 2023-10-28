@@ -71,6 +71,9 @@ unmapped = \
 	'kw': 'Q'	# _qu_est
 }
 
+all_phonemes = list(phoneme_map.values()) + list(unmapped.values())
+all_letters = alphabet = [char for char in 'abcdefghijklmnopqrstuvwxyz']
+
 '''
 # These features described in S&R can be teased out of dataset a given additional context.
 context_dependent = \
@@ -127,7 +130,6 @@ def preprocess():
 	corpus = []
 	dataset_b = {}
 
-	alphabet = 'abcdefghijklmnopqrstuvwxyz'
 
 	# Dataset a has pronunciation information.
 	with open('Raw/a.txt', 'r', encoding='latin-1') as a:
@@ -165,6 +167,8 @@ def preprocess():
 			phonemes += phoneme_map[current]
 
 			# Handle unmapped phonemes.
+			# A bit on the theory: these extra phonemes help ascertain
+			# 1:1 mapping between letters and phonemes, preventing "null letters."
 			for key in unmapped.keys():
 				if key in phonemes:
 					old = phonemes
@@ -331,7 +335,8 @@ def preprocess():
 	# abbreviate ^-briviet- 0<>>1>02<<
 
 	# EM ALIGNMENT TIME (see 06-DAMPER.pdf, or, Aligning Text and Phonemes for Speech Technology Applications Using an EM-Like Algorithm)
-
+	from align import Aligner
+	aligner = Aligner(all_letters, all_phonemes, final)
 
 	# Finally, print the dataset.
 	out = []
