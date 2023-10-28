@@ -2,6 +2,8 @@
 
 # We map phoneme representations defined in dataset a to the ones outlined by Sejnowski and Rosenberg 
 # in their 1987 paper "Parallel Networks that Learn to Pronounce English Text."
+
+
 phoneme_map = \
 {
 				# FROM		TO 
@@ -83,9 +85,30 @@ context_dependent = \
 }
 '''
 
+# These are vowels as defined by S&R. They'll help us populate the dummy letters.
+vowels = \
+	[
+	'a',
+	'A',
+	'c',
+	'@',
+	'^',
+	'W',
+	'i',
+	'I',
+	'o',
+	'O',
+	'E',
+	'R',
+	'e',
+	'U',
+	'u'
+	]
+
+
 class Word:
 	def append_self(self, arr):
-		arr.append('{} {} {}\n'.format(self.letters, self.phonemes, self.syllable_boundary_encodings))
+		arr.append('{:20} {:20} {:20}\n'.format(self.letters, self.phonemes, self.syllable_boundary_encodings))
 		return arr
 
 	def __init__(self, letters, phonemes, stresses):
@@ -99,8 +122,15 @@ class Word:
 	# Return true when encoding successful, else false.
 	def inject_stresses(self, encoding_pattern):
 		slots = encoding_pattern.count('_')
+		# Quick fix for 'ed' and 'es' words lacking syllables.
+		if (self.syllable_count == slots + 1) \
+		and encoding_pattern.endswith('<<<') and (self.letters[-2] == 'e'):
+			# Adds a stress location for the second to last character.
+			s = encoding_pattern
+			encoding_pattern = s[:-2] + '_' + s[-1:]
+			slots += 1
+
 		if slots != self.syllable_count:
-			print('Warning. Word {} had {} stresses in database a but {} in b.'.format(self.letters, self.syllable_count, slots))
 			return False
 		final_encoding = ''
 		index = 0
@@ -130,8 +160,11 @@ def preprocess():
 			line = line.lower().strip()
 			word, pronunciation = line.split('  ')
 			pronunciation = pronunciation.lstrip() # Sometimes, the separator was three spaces instead of two.
-			if '(' in word: 
-				continue	# Skip homonyms.
+
+			# Let's not skip homonyms so soon. We might be able to salvage some pronunciations with the duplicates.
+			#if '(' in word: 
+			#	continue	# Skip homonyms.
+
 			letters = ''
 			phonemes = ''
 			stresses = []
@@ -159,8 +192,8 @@ def preprocess():
 					phonemes = phonemes.replace(key, unmapped[key])
 					#print('Simplifying {} to {}'.format(old, phonemes))
 			corpus.append(Word(letters, phonemes, stresses))
-			print('Added {}, {}, and {} to corpus.'.format(letters, phonemes, stresses))
-	print(len(corpus))
+			#print('Added {}, {}, and {} to corpus.'.format(letters, phonemes, stresses))
+	print('{} words added from a.'.format(len(corpus)))
 
 
 	# Dataset b has syllable boundary information.
@@ -215,17 +248,108 @@ def preprocess():
 				if(len(letters) != len(syllable_boundary_encodings)):
 					print('{} does not map evenly on to {}'.format(letters, syllable_boundary_encodings))
 				dataset_b[letters] = syllable_boundary_encodings
-	print(len(dataset_b.keys()))
+	print('{} words added from b.'.format(len(dataset_b.keys())))
 
 	# Combine the datasets.
 	final = []
+	# A set of all added spellings. Used to detect duplicates.
+	final_spellings = set()
 	keys = dataset_b.keys()
+	mismatched = 0	# The word was found in b, but it had a different number of syllables.
+	unmatched = 0 # The word was not found in b.
+	unmatcheds = [] # To attempt to salvage.
+	duplicates = 0 # These catch duplicate words from disabling "Skip homonyms" above.
+	# More specifically, we give a's duplicates a chance to merge with b, without 
+	# erroneously adding them twice if both fit.
+
 	for word in corpus:
-		if word.letters in keys and len(word.letters) > 1:
+		# We already have this word.
+		if word.letters in final_spellings:
+			duplicates += 1
+			continue
+
+		if word.letters in keys:
 			if(word.inject_stresses(dataset_b[word.letters])):
 				final.append(word)
+				final_spellings.add(word.letters)
+			else:
+				mismatched += 1
+		else:
+			unmatched += 1
+			unmatcheds.append(word)
+
 			#print('Found {} in dataset b'.format(word.letters))
-	print(len(final)) 
+
+	print('{} merged, {} mismatched, {} discarded duplicates, {} unmatched.'.format(len(final), mismatched, duplicates, unmatched)) 
+	salvaged = 0
+	salvageds = []
+	# Naively attempt to salvage unmatched words.
+	# Common words like "underlings", "underlined", "developed" are not matching.
+	# The different endings are to blame.
+	# Let's transplant those endings onto hypothetical valid entries that don't include them.
+	fixes = \
+	[
+		['ed', '<<'],
+		['s', '<'],
+		['d', '<'],
+		['ing', '_<<'],
+		['ers', '_<<'],
+		['er', '_<'],
+		['ability', '_>_<_>_'],
+		['ly', '>_'],
+	]
+	fix_counter = {}
+	for word in unmatcheds:
+		letters = word.letters
+		for fix in fixes:
+			part = fix[0]
+			addendum = fix[1]
+			if not letters.endswith(part):
+				continue
+
+			# Found a match. Now search b for the truncated version of the matching word:
+			truncated = letters[:- len(part)]
+			if (word.letters not in final_spellings) and (truncated in keys):
+				# Fixing "er" and "ers" causes broken pattern when ending letter is vowel.
+				if (truncated[-1] in 'aeiouy') and (part.startswith('er')):
+					continue
+
+				# Inject the stresses with the augmented pattern
+				if(word.inject_stresses(dataset_b[truncated] + addendum)):
+					final.append(word)
+					# Prevent duplicate unmatched homonyms from getting entered twice.
+					final_spellings.add(word.letters)
+					salvaged += 1
+					# Iterate the counter.
+					fix_counter[part] = fix_counter.get(part, 0) + 1
+					#print('Salvaged {} with modified encoding {}'.format(word.letters, word.syllable_boundary_encodings))
+				# TODO: Replacements...
+	print(fix_counter)
+	print('Of the {} unmatched, {} were salvaged.'.format(unmatched, salvaged))
+
+
+	# We need to find a way to inject null symbols:
+
+	# aardvark ardvark 1<<<>2<<
+	# aardvark a-rdvark 1<<<>2<<
+
+	# abbott @b^t 1<>0<<
+	# abbott @b-^t- 1<>0<<
+
+	# First attempt:
+	# While phonemes' length does not equal letters' length 
+	# Iterate through the phonemes, comparing each character to its respective letter.
+	# There are two cases when a - must be injected:
+	# 1. The ith phoneme is a vowel but the ith letter is a consonant.
+	# 2. The ith phoneme is a consonant but the ith letter is a vowel.
+
+	# No, because this would convert
+	# abbreviate ^briviet 0<>>1>02<<	to
+	# abbreviate ^br-iviet- 0<>>1>02<<	but what we really need is
+	# abbreviate ^-briviet- 0<>>1>02<<
+
+	# EM ALIGNMENT TIME (see 06-DAMPER.pdf, or, Aligning Text and Phonemes for Speech Technology Applications Using an EM-Like Algorithm)
+
 
 	# Finally, print the dataset.
 	out = []
@@ -243,9 +367,9 @@ def preprocess():
 		total += 1
 	print('{} words had valid mappings, {} didn\'t'.format(count, total - count))
 	# VALID WORDS:
-	with open('output.txt', 'w+') as c:
+	with open('Out/output.txt', 'w+') as c:
 		c.writelines(out)
-	with open('errors.txt', 'w+') as c:
+	with open('Out/errors.txt', 'w+') as c:
 		c.writelines(errors)
 
 preprocess()
