@@ -17,7 +17,7 @@ class Aligner:
 		def set_by_index(self, i, j, val):
 			self.A[ i ][ j ].val = val
 		def iterate_by_index(self, i, j):
-			self.A[ i ][ j ].iterate()
+			self.A[ i ][ j ].val += 1
 
 		def get(self, l, p):
 			return self.A[ self.L.index(l) ][ self.P.index(p) ].val
@@ -113,6 +113,7 @@ class Aligner:
 
 		# Begin alignment.
 		def score(word):
+			score = 0
 			# Bear in mind, the words and phonemes by this point have been padded.
 			# B's values will be initial scores.
 			B = self.Matrix(word.letters, word.phonemes, A)
@@ -155,33 +156,66 @@ class Aligner:
 			#print('\n\n')
 			#print(D)
 			#print('\n\n\n\n\n')
-			# Return the path and its bottom right corner, the starting point.
-			return D, len(word.letters) - 1, len(word.phonemes) - 1
+			i = len(word.letters) - 1
+			j = len(word.phonemes) - 1
+			# Save score.
+			score = C.get_by_index(i, j)
+			# Now trace backwards, adding null phonemes as necessary.
+			cell = D.get_by_index(i, j)
+			#print('WORD: {}'.format(word.letters))
+			while cell != None:
+				#print('{}: {}'.format(D.letter_at(i, j), D.phoneme_at(i, j)))
+				to_i, to_j = D.get_by_index(i, j)
+
+				diff_i = to_i - i
+				diff_j = to_j - j
+				if diff_i == -1 and diff_j == 0:
+					# Matrix D has an "arrow pointing down" at this cell.
+					# Therefore, inject a null phoneme.
+					# Because we're moving right to left, we can inject this in place.
+					word.phonemes = word.phonemes[:i] + '-' + word.phonemes[i:]
+				elif diff_i == -1 and diff_j == -1:
+					# Iterate count of that letter-phoneme pair.
+					A_.iterate(D.letter_at(i, j), D.phoneme_at(i, j))
+				elif diff_i == 0 and diff_j == -1 and i == 0:
+					# We should only be going left on the very last, hence the third condition.
+					# Also, let's, like, not count these moments.
+					break
+				else:
+					print('Starting at ({}, {}) and going to ({}, {}). Diff: {}, {}' \
+						.format(i, j, to_i, to_j, diff_i, diff_j))
+					print('The valid options have been exhausted, but none applied.')
+					exit()
+				#print('Coords {}, {} turning to coords {}, {}'.format(i, j, x, y))
+				# Move to other coords.
+				cell = D.get_by_index(to_i, to_j)
+				i = to_i
+				j = to_j
+
+			return word, score
 
 		# A new, blank copy to update our counts.
 		A_ = self.Matrix(alphabet, phonemes)
 		# Reset the score.
 		prev_cumulative_score = cumulative_score
 		cumulative_score = 0
-		for word in wordlist:
-			# Get the path back from the end of the word.
-			D, i, j = score(word)
-			cell = D.get_by_index(i, j)
-			#print('WORD: {}'.format(word.letters))
-			while cell != None:
-				#print('{}: {}'.format(D.letter_at(i, j), D.phoneme_at(i, j)))
-				x, y = D.get_by_index(i, j)
-
-				# The difference between these help us determine the mapping,
-				# as well as whether or not to inject a null phoneme.
-				#A_.set_by_index()
-
-				#print('Coords {}, {} turning to coords {}, {}'.format(i, j, x, y))
-				# Move to other coords.
-				cell = D.get_by_index(x, y)
-				i = x
-				j = y
-
+		# We only print these changes after convergence.
+		candidate_wordlist = wordlist.copy()
+		total = len(candidate_wordlist)
+		curr = 0
+		iteration = 1
+		for word in candidate_wordlist:
+			# Score each word, adding score to total.
+			word, score_ = score(word)
+			cumulative_score += score_
+			curr += 1
+			if curr % 5000 == 0:
+				print('ITERATION {}: Scored {}/{} words.'.format(iteration, curr, total))
+		# TODO: Get this to work with a deep copy. 
+		# Without a deep copy, I believe I'll keep erroneously adding dashes?
+		# Or maybe I can just check for whether or not a dash already exists at that location...
+		# Maybe I can construct the string naively from scratch, even?
+		print('Previous score: {}. Current score: {}'.format(prev_cumulative_score, cumulative_score))
 		# After convergence, we need to remove the padding.
 		for word in wordlist:
 			word.letters = word.letters[1:-1]
