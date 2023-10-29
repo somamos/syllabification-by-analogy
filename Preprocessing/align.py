@@ -105,26 +105,26 @@ class Aligner:
 				for phoneme in word.phonemes:
 					A.iterate(letter, phoneme)
 					cumulative_score += 1
+			# Pad.
+			word.letters = self.LETTER_PAD + word.letters + self.LETTER_PAD
+			word.phonemes = self.PHONEME_PAD + word.phonemes + self.PHONEME_PAD					
 		# Print A^0.
 		print(A)
 
 		# Begin alignment.
 		def score(word):
-			# Pad.
-			padded_letters = self.LETTER_PAD + word.letters + self.LETTER_PAD
-			padded_phones = self.PHONEME_PAD + word.phonemes + self.PHONEME_PAD
-
+			# Bear in mind, the words and phonemes by this point have been padded.
 			# B's values will be initial scores.
-			B = self.Matrix(padded_letters, padded_phones, A)
+			B = self.Matrix(word.letters, word.phonemes, A)
 			#print(B)
 			#print('\n\n')
 			# C's values, accumulated scores.
-			C = self.Matrix(padded_letters, padded_phones)
+			C = self.Matrix(word.letters, word.phonemes)
 			# D's values, arrows pointing to either the top (|), left(->), or top left (\) cell.
-			D = self.Matrix(padded_letters, padded_phones)
+			D = self.Matrix(word.letters, word.phonemes)
 			# Iterate through C, adding max of prev vals and pointing D towards it.
-			for i, ch in enumerate(padded_letters):
-				for j, ph in enumerate(padded_phones):
+			for i, ch in enumerate(word.letters):
+				for j, ph in enumerate(word.phonemes):
 					# Beginning cases.
 					if i == 0 and j == 0:
 						# Set D's first index.
@@ -156,7 +156,7 @@ class Aligner:
 			#print(D)
 			#print('\n\n\n\n\n')
 			# Return the path and its bottom right corner, the starting point.
-			return D, len(padded_letters) - 1, len(padded_phones) - 1
+			return D, len(word.letters) - 1, len(word.phonemes) - 1
 
 		# A new, blank copy to update our counts.
 		A_ = self.Matrix(alphabet, phonemes)
@@ -171,11 +171,21 @@ class Aligner:
 			while cell != None:
 				#print('{}: {}'.format(D.letter_at(i, j), D.phoneme_at(i, j)))
 				x, y = D.get_by_index(i, j)
+
+				# The difference between these help us determine the mapping,
+				# as well as whether or not to inject a null phoneme.
+				#A_.set_by_index()
+
 				#print('Coords {}, {} turning to coords {}, {}'.format(i, j, x, y))
 				# Move to other coords.
 				cell = D.get_by_index(x, y)
 				i = x
 				j = y
+
+		# After convergence, we need to remove the padding.
+		for word in wordlist:
+			word.letters = word.letters[1:-1]
+			word.phonemes = word.phonemes[1:-1]
 
 
 
