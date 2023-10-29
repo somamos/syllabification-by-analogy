@@ -10,10 +10,10 @@ phoneme_map = \
 				# (Example words given in dataset a and S&R's NETTalk paper respectively)
 	# VOWELS
 	'aa': 'a', 	# _o_dd, 	f_a_ther
-	'ay': 'A',	# h_i_de,	b_i_te    *I take HUGE issue with this, but Webster's Dictionary 
-	'ao': 'c', 	# _ou_ght,	b_ou_ght   and Google both corroborate that no symbolic distinction 
-	'ae': '@',	# _a_t,		b_a_t      exists between "hide" and "bite," even though the 
-	'ah': '^',	# h_u_t,	b_u_t      difference in sound is obvious.
+	'ay': 'A',	# h_i_de,	b_i_te <--These two are spoken differently for Americans due to Canadian Raising.
+	'ao': 'c', 	# _ou_ght,	b_ou_ght  TODO: split them.
+	'ae': '@',	# _a_t,		b_a_t
+	'ah': '^',	# h_u_t,	b_u_t
 	'aw': 'W',	# c_ow_,	b_ou_t
 	'iy': 'i',	# _ea_t,	p_e_te
 	'ih': 'I',	# _i_t,		b_i_t
@@ -336,6 +336,7 @@ def preprocess():
 
 	# EM ALIGNMENT TIME (see 06-DAMPER.pdf, or, Aligning Text and Phonemes for Speech Technology Applications Using an EM-Like Algorithm)
 	from align import Aligner
+	# TODO: remove side effects and make this properly functional.
 	aligner = Aligner(all_letters, all_phonemes, final)
 
 	# Finally, print the dataset.
