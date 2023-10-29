@@ -77,6 +77,7 @@ class Aligner:
 					elif diff_i == 0 and diff_j == 0:
 						arrow = 'X' # Top left most.
 					else:
+						# Sanity check. This should never happen.
 						print('Starting at ({}, {}) and going to ({}, {}). Diff: {}, {}' \
 							.format(i, j, to_i, to_j, diff_i, diff_j))
 						print('Something is very wrong.')
@@ -88,68 +89,68 @@ class Aligner:
 
 
 	# Letters will map to row indices -- Phonemes, column indices -- of a
-	# so-called association matrix. It scores the likelihood of pairings.
+	# so-called association matrix. Each cell stores the likelihood of a given letter-to-phoneme pairing.
 	def __init__(self, alphabet, phonemes, wordlist):
-		# We stop iterating when cumulative_score stops changing.
+		# We stop iterating when curr_score stops changing.
 		curr_score = 0
 		# Add characters to represent the borders of words.
 		self.LETTER_PAD = '#'
 		self.PHONEME_PAD = '$'
 		alphabet.append(self.LETTER_PAD)
 		phonemes.append(self.PHONEME_PAD)
-		
-		# Given two lists of characters and an optional matrix of starting values;
-		# Return the matrix, A, as well as two lists, L and P,
-		# which map single characters to indices in A.
-
-		# A's values will be counts.
-		A_curr = self.Matrix(alphabet, phonemes)
 
 		# Naive pass, A^0. We're counting every instance a letter and phoneme
-		# exist within the same word.
+		# exist within the same word. No need for specificity at first.
+		A_curr = self.Matrix(alphabet, phonemes)
 		for word in wordlist:
 			for letter in word.letters:
 				for phoneme in word.phonemes:
 					A_curr.iterate(letter, phoneme)
 					curr_score += 1
-			# Pad.
+			# Pad every word.
 			word.letters = self.LETTER_PAD + word.letters + self.LETTER_PAD
 			word.phonemes = self.PHONEME_PAD + word.phonemes + self.PHONEME_PAD					
 		# Print A^0.
 		print(A_curr)
 
 		# Begin alignment.
+		# Populates new and improved association matrix A_n.
+		# given B, a matrix of pairings' likelihoods (determined by previous iteration's association matrix).
+		# A_n is weighted by D's diagonal entries which describe the optimal path from the bottom right
+		# to the top left of the matrix.
 		def score(A_c, A_n, word):
-			# Updates new and improved association matrix.
-			# Construct the phoneme string naively each iteration.
-			# This prevents dashes from getting added over and over again.
+			# Constructs the phoneme string naively each iteration.
 			new_phonemes = ''
 			score = 0
-			# Reconstruct a better association matrix.
 
-			# As per the paper, B's values will be initial scores.
+			# As per the paper, B's cells are determined by the current association matrix's scores.
 			B = self.Matrix(word.letters, word.phonemes, A_c)
-			# C's values, accumulated scores.
+			# The maximums will be propagated downward and rightward through C in pursuit of an optimal path.
 			C = self.Matrix(word.letters, word.phonemes)
-			# D's values describe the "Expetation Maximization-like" path from bottom right to top left.
+			# D's values describe this "Expectation Maximization-like" path.
 			D = self.Matrix(word.letters, word.phonemes)
-			# Iterate through C, adding max of prev vals and pointing D towards it.
+			# Iterate through C, extending maximums downward and rightward and pointing D to the optimal neighbor.
 			for i, ch in enumerate(word.letters):
 				for j, ph in enumerate(word.phonemes):
 					# Beginning cases.
 					if i == 0 and j == 0:
-						# Set D's first index.
+						# Marks the path's end (while cell != None below).
 						D.set_by_index(0, 0, None)
 						continue
-					elif i == 0 or j == 0: # Topmost and leftmost columns are zeroes all the way through.
-						D.set_by_index(i, j, (max(i - 1, 0), max(j - 1, 0)))
+					# Topmost rows and leftmost columns are zeroes all the way through.
+					elif i == 0 or j == 0: 
+						# D points either leftward or upward, whichever doesn't overflow.
+						# (See figure 1(b) of the paper.)
+						upstream = (max(i - 1, 0), max(j - 1, 0))
+						D.set_by_index(i, j, upstream)
 						continue
-					# Three candidates:
-					# the cell above,
+
+					# Three options for predecessors:
+					# 1) the cell above,
 					o1 = C.get_by_index(i - 1, j)
-					# the cell to the left,
+					# 2) the cell to the left, or
 					o2 = 0 			# (Disallow null letters. See "REPRESENTATION CONSTRAINT" above.)
-					# or the cell to the top left plus current.
+					# 3) the cell to the top left plus current.
 					o3 = C.get_by_index(i - 1, j - 1) + B.get_by_index(i, j)
 					
 					best = max((o1, o2, o3))
@@ -158,7 +159,7 @@ class Aligner:
 					if best == o3:
 						D.set_by_index(i, j, (i - 1, j - 1))
 					elif best == o2:
-						D.set_by_index(i, j, (i, j - 1))
+						D.set_by_index(i, j, (i, j - 1)) # Again, this will never happen.
 					elif best == o1:
 						D.set_by_index(i, j, (i - 1, j))
 			#print(C)
@@ -166,29 +167,24 @@ class Aligner:
 			#print(D)
 			#print('\n\n\n\n\n')
 
-			# Expectations set. Begin maximization.
-
+			# Expectations set.
 			i = len(word.letters) - 1
 			j = len(word.phonemes) - 1
-			# Save score.
+			# Save max (bottom right) score.
 			score = C.get_by_index(i, j)
-			# Now trace backwards, adding null phonemes as necessary.
+			# Now trace backwards along path described by D, build new phonemes with nulls, and populate A_next.
 			cell = D.get_by_index(i, j)
-			#print('WORD: {}'.format(word.letters))
 			while cell != None:
-				#print('{}: {}'.format(D.letter_at(i, j), D.phoneme_at(i, j)))
 				to_i, to_j = D.get_by_index(i, j)
 
 				diff_i = to_i - i
 				diff_j = to_j - j
 				if diff_i == -1 and diff_j == 0:
 					# Matrix D has an "arrow pointing down" at this cell.
-					# Therefore, inject a null phoneme.
+					# Therefore, the maximum "belongs" to the row at the letter before it. Inject a null phoneme.
 					new_phonemes = '-' + new_phonemes
-					# Because we're moving right to left, we can inject this in place.
-					#word.phonemes = word.phonemes[:i] + '-' + word.phonemes[i:]
 				elif diff_i == -1 and diff_j == -1:
-					# Iterate count of that letter-phoneme pair.
+					# The maximum "belongs" to this letter-phoneme pair.
 					new_phonemes =  D.phoneme_at(i, j) + new_phonemes
 					A_n.iterate(D.letter_at(i, j), D.phoneme_at(i, j))
 				elif diff_i == 0 and diff_j == -1 and i == 0:
@@ -201,34 +197,35 @@ class Aligner:
 						.format(i, j, to_i, to_j, diff_i, diff_j))
 					print('The valid options have been exhausted, but none applied.')
 					exit()
-				#print('Coords {}, {} turning to coords {}, {}'.format(i, j, x, y))
-				# Move to other coords.
+				# Prepare to iterate.
 				cell = D.get_by_index(to_i, to_j)
 				i = to_i
 				j = to_j
 			# Assign the new phonemes generated. The 0th character of padding has to be re-added, because
-			# the top left corner only occurse at the escape case of the while loop above.
-			word.phonemes = '$' + new_phonemes
+			# the top left corner only occurs at the escape case of the while loop above.
+			word.phonemes = self.PHONEME_PAD + new_phonemes
 			return A_n, score
 
-		# Reset the score.
-		prev_score = 0
-		iteration = 1
-		while prev_score != curr_score:
-			A_next = self.Matrix(alphabet, phonemes)
-			# EVALUATE PROGRESS:
+		def track_progress():
 			count = 0
 			total = 0
+			# EVALUATE PROGRESS:
 			for word in wordlist:
-				# Words with valid 1:1 mappings:
-				# (We need to add two because of paddings in this intermediate stage)
+				# (We need to add 2 because of paddings in this intermediate stage)
 				if(len(word.syllable_boundary_encodings) + 2 == len(word.letters) == len(word.phonemes) ): 
+					# Words with valid 1:1 mappings.
 					count += 1
 				total += 1
 			print('{} words have valid mappings, {} don\'t'.format(count, total - count))
 
+		prev_score = 0
+		iteration = 1
+		while prev_score != curr_score:
+			A_next = self.Matrix(alphabet, phonemes)
+			#track_progress()
 			total = len(wordlist)
 			prev_score = curr_score
+			# Reset the score.
 			curr_score = 0
 			curr = 0
 			for word in wordlist:
@@ -242,10 +239,8 @@ class Aligner:
 					print('ITERATION {}: Scored {}/{} words.'.format(iteration, curr, total))
 			print('Previous score: {}. Current score: {}'.format(prev_score, curr_score))
 			iteration += 1
-			# old = curr
+			# Prepare to iterate.
 			A_curr = A_next
-
-
 		# After convergence, we need to remove the padding.
 		for word in wordlist:
 			word.letters = word.letters[1:-1]
