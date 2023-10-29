@@ -8,8 +8,10 @@ class Aligner:
 				self.letter = letter
 				self.phoneme = phoneme
 				self.val = val
-
-
+		def letter_at(self, i, j):
+			return self.A[ i ][ j ].letter
+		def phoneme_at(self, i, j):
+			return self.A[ i ][ j ].phoneme
 		def get_by_index(self, i, j):
 			return self.A[ i ][ j ].val
 		def set_by_index(self, i, j, val):
@@ -42,8 +44,38 @@ class Aligner:
 			s += '\n'
 			for i, row in enumerate(self.A):
 				s += '{}'.format(self.L[i]) # Print row labels.
-				for cell in row:
-					s += '{:>8}'.format(cell.val) # Print individual cells.
+				for j, cell in enumerate(row):
+					# Special print needed for None
+					if cell.val is None:
+						s += '{:>8}'.format('X') # Print individual cells.
+						continue
+					# Regular case
+					elif type(cell.val) is not tuple:
+						s += '{:>8}'.format(cell.val) # Print individual cells.
+						continue
+					# Special print needed for tuples
+					# The tuple represents coords of a neighboring cell. The difference
+					# between that coord and current coord will determine which
+					# symbol to print.
+					to_i, to_j = cell.val
+					diff_i = to_i - i
+					diff_j = to_j - j
+					arrow = ''
+					if diff_i == -1 and diff_j == 0:
+						arrow = '|'	# Arrow pointing up
+					elif diff_i == 0 and diff_j == -1:
+						arrow = '->' # Arrow pointing right
+					elif diff_i == -1 and diff_j == -1:
+						arrow = '\\' # Arrow pointing bottom right
+					elif diff_i == 0 and diff_j == 0:
+						arrow = 'X' # Top left most.
+					else:
+						print('Starting at ({}, {}) and going to ({}, {}). Diff: {}, {}' \
+							.format(i, j, to_i, to_j, diff_i, diff_j))
+						print('Something is very wrong.')
+						exit()
+					s += '{:>8}'.format(arrow)
+
 				s += '\n'
 			return s
 
@@ -51,17 +83,18 @@ class Aligner:
 	# Letters will map to row indices -- Phonemes, column indices -- of a
 	# so-called association matrix. It scores the likelihood of pairings.
 	def __init__(self, alphabet, phonemes, wordlist):
+		# We stop iterating when cumulative_score stops changing.
+		cumulative_score = 0
+		# Add characters to represent the borders of words.
 		self.LETTER_PAD = '#'
 		self.PHONEME_PAD = '$'
-		
-		# Given two lists of characters and an optional matrix of starting values;
-		# Return the matrix, A, as well as two dicts, L and P,
-		# which map single characters to indices in A.
-
-
-		# Add characters to represent the borders of words.
 		alphabet.append(self.LETTER_PAD)
 		phonemes.append(self.PHONEME_PAD)
+		
+		# Given two lists of characters and an optional matrix of starting values;
+		# Return the matrix, A, as well as two lists, L and P,
+		# which map single characters to indices in A.
+
 		# A's values will be counts.
 		A = self.Matrix(alphabet, phonemes)
 
@@ -71,7 +104,8 @@ class Aligner:
 			for letter in word.letters:
 				for phoneme in word.phonemes:
 					A.iterate(letter, phoneme)
-
+					cumulative_score += 1
+		# Print A^0.
 		print(A)
 
 		# Begin alignment.
@@ -82,45 +116,67 @@ class Aligner:
 
 			# B's values will be initial scores.
 			B = self.Matrix(padded_letters, padded_phones, A)
-			print(B)
-			print('\n\n')
+			#print(B)
+			#print('\n\n')
 			# C's values, accumulated scores.
 			C = self.Matrix(padded_letters, padded_phones)
-			# D's values, references to "previous Cells."
+			# D's values, arrows pointing to either the top (|), left(->), or top left (\) cell.
 			D = self.Matrix(padded_letters, padded_phones)
 			# Iterate through C, adding max of prev vals and pointing D towards it.
 			for i, ch in enumerate(padded_letters):
 				for j, ph in enumerate(padded_phones):
 					# Beginning cases.
-					if i == 0 or j == 0:
+					if i == 0 and j == 0:
+						# Set D's first index.
+						D.set_by_index(0, 0, None)
 						continue
-					maximum = 0
-					curr = 0
-					curr_coord = None
-					# Either cell above,
+					elif i == 0 or j == 0: # Topmost and leftmost columns are zeroes all the way through.
+						# j is 0, point to left.
+						D.set_by_index(i, j, (max(i - 1, 0), max(j - 1, 0)))
+						continue
+					# Three candidates:
+					# the cell above,
 					o1 = C.get_by_index(i - 1, j)
-					# cell to the left,
-					o2 = C.get_by_index(i, j - 1)
-					# or cell to the top left plus current.
+					# the cell to the left,
+					o2 = 0 #C.get_by_index(i, j - 1) # prevent the null letter.
+					# or the cell to the top left plus current.
 					o3 = C.get_by_index(i - 1, j - 1) + B.get_by_index(i, j)
 					
 					best = max((o1, o2, o3))
 
 					C.set_by_index(i, j, best)
 					if best == o3:
-						D.set_by_index(i, j, '\\')
+						D.set_by_index(i, j, (i - 1, j - 1))
 					elif best == o2:
-						D.set_by_index(i, j, '->')
+						D.set_by_index(i, j, (i, j - 1))
 					elif best == o1:
-						D.set_by_index(i, j, ('|'))
-			print(C)
-			print('\n\n')
-			print(D)
-			print('\n\n\n\n\n')
+						D.set_by_index(i, j, (i - 1, j))
+			#print(C)
+			#print('\n\n')
+			#print(D)
+			#print('\n\n\n\n\n')
+			# Return the path and its bottom right corner, the starting point.
+			return D, len(padded_letters) - 1, len(padded_phones) - 1
 
-		print('Printing the word {}'.format(wordlist[0].letters))
-		for i in range (100):
-			score(wordlist[i])
+		# A new, blank copy to update our counts.
+		A_ = self.Matrix(alphabet, phonemes)
+		# Reset the score.
+		prev_cumulative_score = cumulative_score
+		cumulative_score = 0
+		for word in wordlist:
+			# Get the path back from the end of the word.
+			D, i, j = score(word)
+			cell = D.get_by_index(i, j)
+			#print('WORD: {}'.format(word.letters))
+			while cell != None:
+				#print('{}: {}'.format(D.letter_at(i, j), D.phoneme_at(i, j)))
+				x, y = D.get_by_index(i, j)
+				#print('Coords {}, {} turning to coords {}, {}'.format(i, j, x, y))
+				# Move to other coords.
+				cell = D.get_by_index(x, y)
+				i = x
+				j = y
+
 
 
 
