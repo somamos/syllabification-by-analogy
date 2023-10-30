@@ -160,12 +160,23 @@ class Aligner:
 						D.set_by_index(i, j, (i - 1, j - 1))
 					elif best == o2:
 						D.set_by_index(i, j, (i, j - 1)) # Again, this will never happen.
-					elif best == o1:
+					elif best == o1: 
 						D.set_by_index(i, j, (i - 1, j))
-			#print(C)
-			#print('\n\n')
-			#print(D)
-			#print('\n\n\n\n\n')
+
+					# The above order erroneously prioritizes top left over vertical in case of ties.
+					# Ties should favor vertical in every case EXCEPT the bottom right:
+					# For instance, double letters should be left-aligned: 'aardvark' should yield 'a-' and not '-a'
+					# Whereas in the bottom right, vertical movement would cause a character to map to the padding phoneme $.
+					if (o1 == o3) and (j != len(word.phonemes) - 1):
+						# Rectify the tie.
+						D.set_by_index(i, j, (i - 1, j))						
+			#if '#aardvark#' == word.letters:
+			#	print(B)
+			#	print('\n\n')
+			#	print(C)
+			#	print('\n\n')
+			#	print(D)
+			#	print('\n\n\n\n\n')
 
 			# Expectations set.
 			i = len(word.letters) - 1

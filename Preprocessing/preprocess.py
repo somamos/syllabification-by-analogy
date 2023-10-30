@@ -129,10 +129,12 @@ def preprocess():
 	# To be filled with references to word objects.
 	corpus = []
 	dataset_b = {}
-
+	# location of database a and b
+	a_path = 'Raw/a.txt'
+	b_path = 'Raw/b.txt'
 
 	# Dataset a has pronunciation information.
-	with open('Raw/a.txt', 'r', encoding='latin-1') as a:
+	with open(a_path, 'r', encoding='latin-1') as a:
 		for line in a:
 			# Ignore comments
 			if line.startswith(';;;'): 
@@ -180,7 +182,7 @@ def preprocess():
 
 
 	# Dataset b has syllable boundary information.
-	with open('Raw/b.txt', 'r', encoding='latin-1') as b:
+	with open(b_path, 'r', encoding='latin-1') as b:
 		for line in b:
 			line = line.lower()
 			# Certain lines consist of multiple words.
