@@ -44,18 +44,18 @@ class Aligner:
 
 		def __str__(self):
 			s = ' '
-			s += ''.join(['{:>8}'.format(p) for p in self.P]) # Print col labels.
+			s += ''.join(['{:>12}'.format(p) for p in self.P]) # Print col labels.
 			s += '\n'
 			for i, row in enumerate(self.A):
 				s += '{}'.format(self.L[i]) # Print row labels.
 				for j, cell in enumerate(row):
 					# Special print needed for None
 					if cell.val is None:
-						s += '{:>8}'.format('X') # Print individual cells.
+						s += '{:>12}'.format('X') # Print starting cell.
 						continue
 					# Regular case
 					elif type(cell.val) is not tuple:
-						s += '{:>8}'.format(cell.val) # Print individual cells.
+						s += '{:>12.2e}'.format(cell.val) # Print individual cells.
 						continue
 					# Special print needed for tuples
 					# The tuple represents coords of a neighboring cell. The difference
@@ -81,7 +81,7 @@ class Aligner:
 							.format(i, j, to_i, to_j, diff_i, diff_j))
 						print('Something is very wrong.')
 						exit()
-					s += '{:>8}'.format(arrow)
+					s += '{:>12}'.format(arrow)
 
 				s += '\n'
 			return s
@@ -89,7 +89,7 @@ class Aligner:
 
 	# Letters will map to row indices -- Phonemes, column indices -- of a
 	# so-called association matrix. Each cell stores the likelihood of a given letter-to-phoneme pairing.
-	def __init__(self, alphabet, phonemes, wordlist, scale = 40, *args):
+	def __init__(self, alphabet, phonemes, wordlist, vowel_letters = 'aeiouy', vowel_sounds = 'aAc@^WiIoOEReUuY', scale = 40, *args):
 		# We stop iterating when curr_score stops changing.
 		curr_score = 0
 		# Add characters to represent the borders of words.
@@ -99,7 +99,7 @@ class Aligner:
 		phonemes.append(self.PHONEME_PAD)
 
 		# Naive pass, A^0. We're counting every instance a letter and phoneme
-		# exist within the same word. No need for specificity at first.
+		# exist in the same word, the nearer the better (by index).
 		A_curr = self.Matrix(alphabet, phonemes)
 		for word in wordlist:
 			for i, letter in enumerate(word.letters):
@@ -110,6 +110,14 @@ class Aligner:
 						continue
 					# Weighted method.
 					weight = scale / (1 + abs(i - j))
+					# Let's also make sure they belong to the same "group."
+					# It's not in the paper, but it seems intuitive enough and helps for most cases.
+					matching = ((letter in vowel_letters) == (phoneme in vowel_sounds))
+					prev_weight = weight
+					weight *= 0.75 if not matching else 1
+					# Also, I feel like the phoneme equaling the letter is a trivial positive indicator.
+					weight *= 1.1 if letter == phoneme else 1
+					
 					A_curr.iterate(letter, phoneme, weight)
 					curr_score += weight
 			# Pad every word.

@@ -4,6 +4,7 @@
 # in their 1987 paper "Parallel Networks that Learn to Pronounce English Text."
 
 
+
 phoneme_map = \
 {
 				# FROM		TO 
@@ -73,6 +74,9 @@ unmapped = \
 
 all_phonemes = list(phoneme_map.values()) + list(unmapped.values())
 all_letters = alphabet = [char for char in 'abcdefghijklmnopqrstuvwxyz']
+
+vowel_letters = 'aeiouy'
+vowel_sounds = 'aAc@^WiIoOEReUuY'
 
 '''
 # These features described in S&R can be teased out of dataset a given additional context.
@@ -339,7 +343,7 @@ def preprocess():
 	# EM ALIGNMENT TIME (see 06-DAMPER.pdf, or, Aligning Text and Phonemes for Speech Technology Applications Using an EM-Like Algorithm)
 	from align import Aligner
 	# TODO: remove side effects and make this properly functional.
-	aligner = Aligner(all_letters, all_phonemes, final)
+	aligner = Aligner(all_letters, all_phonemes, final, vowel_letters, vowel_sounds)
 
 	# Finally, print the dataset.
 	out = []
