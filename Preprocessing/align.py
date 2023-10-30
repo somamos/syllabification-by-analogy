@@ -1,7 +1,6 @@
 # A Python implementation of Damper & Marchand's "Aligning Text and Phonemes 
 #      for Speech Technology Applications Using an EM-Like Algorithm"
 # which can be read here: https://eprints.soton.ac.uk/260616/1/06-DAMPER.pdf
-
 class Aligner:
 	class Matrix:
 		class Cell:
@@ -26,10 +25,10 @@ class Aligner:
 			if l == '-' or p == '-':
 				return
 			self.A[ self.L.index(l) ][ self.P.index(p) ] = val
-		def iterate(self, l, p):
+		def iterate(self, l, p, val = 1):
 			if l == '-' or p == '-':
 				return
-			self.A[ self.L.index(l) ][ self.P.index(p) ].val += 1
+			self.A[ self.L.index(l) ][ self.P.index(p) ].val += val
 
 		def __init__(self, rows, cols, init = None):
 			# Map all phonemes and letters to indices.
@@ -90,7 +89,7 @@ class Aligner:
 
 	# Letters will map to row indices -- Phonemes, column indices -- of a
 	# so-called association matrix. Each cell stores the likelihood of a given letter-to-phoneme pairing.
-	def __init__(self, alphabet, phonemes, wordlist):
+	def __init__(self, alphabet, phonemes, wordlist, scale = 40, *args):
 		# We stop iterating when curr_score stops changing.
 		curr_score = 0
 		# Add characters to represent the borders of words.
@@ -103,10 +102,16 @@ class Aligner:
 		# exist within the same word. No need for specificity at first.
 		A_curr = self.Matrix(alphabet, phonemes)
 		for word in wordlist:
-			for letter in word.letters:
-				for phoneme in word.phonemes:
-					A_curr.iterate(letter, phoneme)
-					curr_score += 1
+			for i, letter in enumerate(word.letters):
+				for j, phoneme in enumerate(word.phonemes):
+					if 'NAIVE' in args:
+						A_curr.iterate(letter, phoneme)
+						curr_score += 1
+						continue
+					# Weighted method.
+					weight = scale / (1 + abs(i - j))
+					A_curr.iterate(letter, phoneme, weight)
+					curr_score += weight
 			# Pad every word.
 			word.letters = self.LETTER_PAD + word.letters + self.LETTER_PAD
 			word.phonemes = self.PHONEME_PAD + word.phonemes + self.PHONEME_PAD					
