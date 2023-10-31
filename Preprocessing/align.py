@@ -1,10 +1,18 @@
 # A Python implementation of Damper & Marchand's "Aligning Text and Phonemes 
 #      for Speech Technology Applications Using an EM-Like Algorithm"
 # which can be read here: https://eprints.soton.ac.uk/260616/1/06-DAMPER.pdf
+
+# Improvements over the original paper:
+# - Discourages right-alignment without destroying valid silent letters.
+#   (ctrl+f: "Suppress above the diagonal")
+# - Suppresses phoneme and vowel types that do not match.
+#   ctrl+f: "Tune the weights"
+
 class Aligner:
+	# An matrix, A, of dimension L by P
 	# A list, L, of row labels
 	# A list, P, of column labels
-	# An matrix, A, of dimension L by P
+	# Methods to access cells by index and via label.
 	class Matrix:
 		# Constructs L from rows, P from cols, and initial values
 		# for those cells by init.
@@ -33,18 +41,15 @@ class Aligner:
 		def iterate_by_index(self, i, j):
 			self.A[ i ][ j ] += 1
 
-		def is_number(self, x):
-			import numbers
-			return isinstance(x, numbers.Number)
+		def contains(self, l, p):
+			return (l in self.L) and (p in self.P)
 
 		# Get the value associated with the cell of row label l and column label p.
-		def get(self, l, p): # Ignore dashes.
-			val = 0
-			try:
-				val = self.value_at_index( self.L.index(l), self.P.index(p) )
-			except:
-				pass
-			return val
+		def get(self, l, p):
+			# Mapping validity.
+			if not self.contains(l, p):
+				return 0
+			return self.value_at_index( self.L.index(l), self.P.index(p) )
 
 		# Set the value associated with the cell of row label l and column label p.
 		def set(self, l, p, val):
@@ -53,7 +58,7 @@ class Aligner:
 		# Iterate, if applicable, the value associated with the cell of row label l and column label p.
 		def iterate(self, l, p, val = 1):
 			# Mapping validity.
-			if l not in self.L or p not in self.P:
+			if not self.contains(l, p):
 				return
 			# Type validity.
 			if not self.is_number( self.A[ self.L.index(l) ][ self.P.index(p) ] ):
@@ -61,6 +66,10 @@ class Aligner:
 				return
 			# Iterate.
 			self.A[ self.L.index(l) ][ self.P.index(p) ] += val
+
+		def is_number(self, x):
+			import numbers
+			return isinstance(x, numbers.Number)
 
 		def __str__(self):
 			# Formatting stuff.
@@ -94,7 +103,8 @@ class Aligner:
 
 	# Letters will map to row indices -- Phonemes, column indices -- of a
 	# so-called association matrix. Each cell stores the likelihood of a given letter-to-phoneme pairing.
-	def __init__(self, alphabet, phonemes, wordlist, vowel_letters = 'aeiouy', vowel_sounds = 'aAc@^WiIoOEReUuY', scale = 40, test_word = 'aardvark', *args):
+	def __init__(self, alphabet, phonemes, wordlist, vowel_letters = 'aeiouy', vowel_sounds = 'aAc@^WiIoOEReUuY', scale = 40, test_words = ['auction', 'articulated', 'thanked', 'watched'], *args):
+		import math
 		# We stop iterating when curr_score stops changing.
 		curr_score = 0
 		# Add characters to represent the borders of words.
@@ -115,12 +125,12 @@ class Aligner:
 						continue
 					# Weighted method.
 					weight = scale / (1 + abs(i - j))
-					# Let's also make sure they belong to the same "group."
-					# It's not in the paper, but it seems intuitive enough and helps for most cases.
+					# Tune the weights:
+					# 1) Make sure they belong to the same "group."
 					matching = ((letter in vowel_letters) == (phoneme in vowel_sounds))
 					prev_weight = weight
 					weight *= 0.75 if not matching else 1
-					# Also, I feel like the phoneme equaling the letter is a trivial positive indicator.
+					# 2) Boost when phoneme equals letter.
 					weight *= 1.1 if letter == phoneme else 1
 					
 					A_curr.iterate(letter, phoneme, weight)
@@ -147,6 +157,26 @@ class Aligner:
 			C = self.Matrix(word.letters, word.phonemes)
 			# D's values describe this "Expectation Maximization-like" path.
 			D = self.Matrix(word.letters, word.phonemes)
+
+			# Suppress above the diagonal.
+			# Severely discourage beginning with null phonemes.
+			for i, i_v in enumerate(word.letters):
+				for j, j_v in enumerate(word.phonemes):
+					# Words like 'knowledge', 'psychology', 'gnome', and 'pterodactyl' are very rare,
+					# and in e.g. the lattermost case, "t" should easily overcome the dampening to surpass "p".
+					suppression_factor = math.pow(abs( 1 / (max (0, j - i ) + 1 ) ), 3)
+					# dampening amounts to, for e.g. dimension 6 x 6 (Not to scale)
+					#     l    E    t    -    R    -
+					# L  1.0, 0.5, 0.3, 0.3, 0.2, 0.1
+					# E  1.0, 1.0, 0.5, 0.3, 0.2, 0.2
+					# T  1.0, 1.0, 1.0, 0.5, 0.3, 0.2
+					# T  1.0, 1.0, 1.0, 1.0, 0.5, 0.3
+					# E  1.0, 1.0, 1.0, 1.0, 1.0, 0.5
+					# R  1.0, 1.0, 1.0, 1.0, 1.0, 1.0
+
+					curr = B.value_at_index(i, j)
+					B.set_by_index(i, j, curr * suppression_factor)
+
 			# Iterate through C, extending maximums downward and rightward and pointing D to the optimal neighbor.
 			for i, ch in enumerate(word.letters):
 				for j, ph in enumerate(word.phonemes):
@@ -167,7 +197,7 @@ class Aligner:
 					# 1) the cell above,
 					o1 = C.value_at_index(i - 1, j)
 					# 2) the cell to the left, or
-					o2 = 0 			# (Disallow null letters. See "REPRESENTATION CONSTRAINT" above.)
+					o2 = 0 			# (Disallow null letters due to representation constraint.
 					# 3) the cell to the top left plus current.
 					o3 = C.value_at_index(i - 1, j - 1) + B.value_at_index(i, j)
 					
@@ -189,11 +219,14 @@ class Aligner:
 						# Rectify the tie.
 						D.set_by_index(i, j, (i - 1, j))
 
-			if ('#{}#'.format(test_word)) == word.letters:
+			if word.letters in ['#{}#'.format(x) for x in test_words]:
+				print('Matrix B for {}'.format(word.letters))
 				print(B)
 				print('\n\n')
+				print('Matrix C for {}'.format(word.letters))
 				print(C)
 				print('\n\n')
+				print('Matrix D for {}'.format(word.letters))
 				print(D)
 				print('\n\n\n\n\n')
 
@@ -219,7 +252,6 @@ class Aligner:
 					new_phonemes =  phoneme + new_phonemes
 					A_n.iterate(letter, phoneme)
 				elif diff_i == 0 and diff_j == -1 and i == 0:
-					# Due to the REPRESENTATION CONSTRAINT, 
 					# this should never happen beyond the topmost row of padding.
 					# Let's not count these moments.
 					break
@@ -264,7 +296,7 @@ class Aligner:
 				A_next, score_ = score(A_curr, A_next, word)
 				curr_score += score_
 				curr += 1
-				if curr % 5000 == 0:
+				if curr % 10000 == 0 or word.letters in ['#{}#'.format(x) for x in test_words]:
 					# Print candidate word:
 					print('Word {} has phonemes {}'.format(word.letters, word.phonemes))
 					print('ITERATION {}: Scored {}/{} words.'.format(iteration, curr, total))

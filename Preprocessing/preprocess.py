@@ -361,9 +361,9 @@ def preprocess():
 		total += 1
 	print('{} words had valid mappings, {} didn\'t'.format(count, total - count))
 	# VALID WORDS:
-	with open('Out/output.txt', 'w+') as c:
+	with open('Out/output.txt', 'w') as c:
 		c.writelines(out)
-	with open('Out/errors.txt', 'w+') as c:
+	with open('Out/errors.txt', 'w') as c:
 		c.writelines(errors)
 
 preprocess()
