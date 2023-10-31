@@ -2,94 +2,99 @@
 #      for Speech Technology Applications Using an EM-Like Algorithm"
 # which can be read here: https://eprints.soton.ac.uk/260616/1/06-DAMPER.pdf
 class Aligner:
+	# A list, L, of row labels
+	# A list, P, of column labels
+	# An matrix, A, of dimension L by P
 	class Matrix:
-		class Cell:
-			def __init__(self, letter, phoneme, val):
-				self.letter = letter
-				self.phoneme = phoneme
-				self.val = val
-		def letter_at(self, i, j):
-			return self.A[ i ][ j ].letter
-		def phoneme_at(self, i, j):
-			return self.A[ i ][ j ].phoneme
-		def get_by_index(self, i, j):
-			return self.A[ i ][ j ].val
-		def set_by_index(self, i, j, val):
-			self.A[ i ][ j ].val = val
-		def iterate_by_index(self, i, j):
-			self.A[ i ][ j ].val += 1
-
-		def get(self, l, p): # Ignore dashes.
-			return self.A[ self.L.index(l) ][ self.P.index(p) ].val if l != '-' and p != '-' else 0
-		def set(self, l, p, val):
-			if l == '-' or p == '-':
-				return
-			self.A[ self.L.index(l) ][ self.P.index(p) ] = val
-		def iterate(self, l, p, val = 1):
-			if l == '-' or p == '-':
-				return
-			self.A[ self.L.index(l) ][ self.P.index(p) ].val += val
-
+		# Constructs L from rows, P from cols, and initial values
+		# for those cells by init.
 		def __init__(self, rows, cols, init = None):
 			# Map all phonemes and letters to indices.
 			self.L = rows
 			self.P = cols
-			self.A = [] # Populate association matrix with initial values.
+			self.A = []
 			for i in self.L:
 				row = []
 				for j in self.P:
 					val = 0 if init is None else init.get(i, j)
-					row.append(self.Cell(i, j, val))
+					row.append( val )
 				self.A.append(row)
+		# Retrieve a tuple of labels for a given index.
+		def labels_at_index(self, i, j):
+			return (self.L[ i ], self.P[ j ])
+
+		# The next three methods index directly into A, bypassing row/col labels.
+		def value_at_index(self, i, j):
+			return self.A[ i ][ j ]
+
+		def set_by_index(self, i, j, val):
+			self.A[ i ][ j ] = val
+
+		def iterate_by_index(self, i, j):
+			self.A[ i ][ j ] += 1
+
+		def is_number(self, x):
+			import numbers
+			return isinstance(x, numbers.Number)
+
+		# Get the value associated with the cell of row label l and column label p.
+		def get(self, l, p): # Ignore dashes.
+			val = 0
+			try:
+				val = self.value_at_index( self.L.index(l), self.P.index(p) )
+			except:
+				pass
+			return val
+
+		# Set the value associated with the cell of row label l and column label p.
+		def set(self, l, p, val):
+			self.set_by_index( self.L.index(l), self.P.index(p), val )
+
+		# Iterate, if applicable, the value associated with the cell of row label l and column label p.
+		def iterate(self, l, p, val = 1):
+			# Mapping validity.
+			if l not in self.L or p not in self.P:
+				return
+			# Type validity.
+			if not self.is_number( self.A[ self.L.index(l) ][ self.P.index(p) ] ):
+				print('Warning. The type of the value at indices labeled ({}, {}) cannot be iterated.'.format(l, p))
+				return
+			# Iterate.
+			self.A[ self.L.index(l) ][ self.P.index(p) ] += val
 
 		def __str__(self):
+			# Formatting stuff.
+			SPACING = '{:>12}'
+			NOTATION = '{:.2e}'
+
 			s = ' '
 			s += ''.join(['{:>12}'.format(p) for p in self.P]) # Print col labels.
 			s += '\n'
 			for i, row in enumerate(self.A):
 				s += '{}'.format(self.L[i]) # Print row labels.
-				for j, cell in enumerate(row):
-					# Special print needed for None
-					if cell.val is None:
-						s += '{:>12}'.format('X') # Print starting cell.
-						continue
-					# Regular case
-					elif type(cell.val) is not tuple:
-						s += '{:>12.2e}'.format(cell.val) # Print individual cells.
-						continue
-					# Special print needed for tuples
-					# The tuple represents coords of a neighboring cell. The difference
-					# between that coord and current coord will determine which
-					# symbol to print.
-					to_i, to_j = cell.val
-					diff_i = to_i - i
-					diff_j = to_j - j
-					arrow = ''
-					if diff_i == -1 and diff_j == 0:
-						arrow = '|'	# Arrow pointing up
-					elif diff_i == 0 and diff_j == -1:
-						# Will never be used. We adhere to the REPRESENTATION CONSTRAINT described
-						# in "Letter-Phoneme Alignment: An Exploration" by Jiampojamarn and Kondrak
-						arrow = '->' # Arrow pointing right
-					elif diff_i == -1 and diff_j == -1:
-						arrow = '\\' # Arrow pointing bottom right
-					elif diff_i == 0 and diff_j == 0:
-						arrow = 'X' # Top left most.
+				for val in row:
+					# Print cells.
+					cell_str = ''
+					# Format as number.					
+					if self.is_number(val):
+						cell_str = SPACING.format( NOTATION.format( val ) )
+					# Format as tuple.
+					elif type( val ) is tuple:
+						# Retrieve labels pointed to by this cell.
+						labels = self.labels_at_index( val[0], val[1] )
+						coords_str = str(''.join(list(labels)))
+						cell_str = SPACING.format( coords_str ) 
+					# Convert to string.
 					else:
-						# Sanity check. This should never happen.
-						print('Starting at ({}, {}) and going to ({}, {}). Diff: {}, {}' \
-							.format(i, j, to_i, to_j, diff_i, diff_j))
-						print('Something is very wrong.')
-						exit()
-					s += '{:>12}'.format(arrow)
-
+						cell_str = SPACING.format( str( val ) )
+					s += cell_str
 				s += '\n'
 			return s
 
 
 	# Letters will map to row indices -- Phonemes, column indices -- of a
 	# so-called association matrix. Each cell stores the likelihood of a given letter-to-phoneme pairing.
-	def __init__(self, alphabet, phonemes, wordlist, vowel_letters = 'aeiouy', vowel_sounds = 'aAc@^WiIoOEReUuY', scale = 40, *args):
+	def __init__(self, alphabet, phonemes, wordlist, vowel_letters = 'aeiouy', vowel_sounds = 'aAc@^WiIoOEReUuY', scale = 40, test_word = 'aardvark', *args):
 		# We stop iterating when curr_score stops changing.
 		curr_score = 0
 		# Add characters to represent the borders of words.
@@ -124,7 +129,7 @@ class Aligner:
 			word.letters = self.LETTER_PAD + word.letters + self.LETTER_PAD
 			word.phonemes = self.PHONEME_PAD + word.phonemes + self.PHONEME_PAD					
 		# Print A^0.
-		print(A_curr)
+		#print(A_curr)
 
 		# Begin alignment.
 		# Populates new and improved association matrix A_n.
@@ -160,11 +165,11 @@ class Aligner:
 
 					# Three options for predecessors:
 					# 1) the cell above,
-					o1 = C.get_by_index(i - 1, j)
+					o1 = C.value_at_index(i - 1, j)
 					# 2) the cell to the left, or
 					o2 = 0 			# (Disallow null letters. See "REPRESENTATION CONSTRAINT" above.)
 					# 3) the cell to the top left plus current.
-					o3 = C.get_by_index(i - 1, j - 1) + B.get_by_index(i, j)
+					o3 = C.value_at_index(i - 1, j - 1) + B.value_at_index(i, j)
 					
 					best = max((o1, o2, o3))
 
@@ -182,24 +187,25 @@ class Aligner:
 					# Whereas in the bottom right, vertical movement would cause a character to map to the padding phoneme $.
 					if (o1 == o3) and (j != len(word.phonemes) - 1):
 						# Rectify the tie.
-						D.set_by_index(i, j, (i - 1, j))						
-			#if '#aardvark#' == word.letters:
-			#	print(B)
-			#	print('\n\n')
-			#	print(C)
-			#	print('\n\n')
-			#	print(D)
-			#	print('\n\n\n\n\n')
+						D.set_by_index(i, j, (i - 1, j))
+
+			if ('#{}#'.format(test_word)) == word.letters:
+				print(B)
+				print('\n\n')
+				print(C)
+				print('\n\n')
+				print(D)
+				print('\n\n\n\n\n')
 
 			# Expectations set.
 			i = len(word.letters) - 1
 			j = len(word.phonemes) - 1
 			# Save max (bottom right) score.
-			score = C.get_by_index(i, j)
+			score = C.value_at_index(i, j)
 			# Now trace backwards along path described by D, build new phonemes with nulls, and populate A_next.
-			cell = D.get_by_index(i, j)
+			cell = D.value_at_index(i, j)
 			while cell != None:
-				to_i, to_j = D.get_by_index(i, j)
+				to_i, to_j = D.value_at_index(i, j)
 
 				diff_i = to_i - i
 				diff_j = to_j - j
@@ -208,9 +214,10 @@ class Aligner:
 					# Therefore, the maximum "belongs" to the row at the letter before it. Inject a null phoneme.
 					new_phonemes = '-' + new_phonemes
 				elif diff_i == -1 and diff_j == -1:
-					# The maximum "belongs" to this letter-phoneme pair.
-					new_phonemes =  D.phoneme_at(i, j) + new_phonemes
-					A_n.iterate(D.letter_at(i, j), D.phoneme_at(i, j))
+					# The maximum "belongs" to this cell's letter-phoneme pair.
+					letter, phoneme = D.labels_at_index(i, j)
+					new_phonemes =  phoneme + new_phonemes
+					A_n.iterate(letter, phoneme)
 				elif diff_i == 0 and diff_j == -1 and i == 0:
 					# Due to the REPRESENTATION CONSTRAINT, 
 					# this should never happen beyond the topmost row of padding.
@@ -222,7 +229,7 @@ class Aligner:
 					print('The valid options have been exhausted, but none applied.')
 					exit()
 				# Prepare to iterate.
-				cell = D.get_by_index(to_i, to_j)
+				cell = D.value_at_index(to_i, to_j)
 				i = to_i
 				j = to_j
 			# Assign the new phonemes generated. The 0th character of padding has to be re-added, because
