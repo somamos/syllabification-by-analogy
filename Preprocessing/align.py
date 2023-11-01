@@ -5,6 +5,8 @@
 # Improvements over the original paper:
 # - Discourages right-alignment without destroying valid silent letters.
 #   (ctrl+f: "Suppress above the diagonal")
+# - Uses "association dict" instead of "association matrix."
+#   About 60% performance boost (from ~5 seconds down to ~3 seconds per 10,000 words scored).
 # - Suppresses phoneme and vowel types that do not match.
 #   ctrl+f: "Tune the weights"
 
@@ -15,8 +17,8 @@ class Aligner:
 	# Methods to access cells by index and via label.
 	class Matrix:
 		# Constructs L from rows, P from cols, and initial values
-		# for those cells by init.
-		def __init__(self, rows, cols, init = None):
+		# for those cells via dict by init_dict.
+		def __init__(self, rows, cols, init_dict = None):
 			# Map all phonemes and letters to indices.
 			self.L = rows
 			self.P = cols
@@ -24,7 +26,7 @@ class Aligner:
 			for i in self.L:
 				row = []
 				for j in self.P:
-					val = 0 if init is None else init.get(i, j)
+					val = 0 if init_dict is None else init_dict.get(i + j, 0)
 					row.append( val )
 				self.A.append(row)
 		# Retrieve a tuple of labels for a given index.
@@ -112,10 +114,11 @@ class Aligner:
 		self.PHONEME_PAD = '$'
 		alphabet.append(self.LETTER_PAD)
 		phonemes.append(self.PHONEME_PAD)
+		# Using a dict for the "association matrix" might be more efficient.
+		A_curr = {}
 
-		# Naive pass, A^0. We're counting every instance a letter and phoneme
+		# Weighted pass, A^0. We're counting every instance a letter and phoneme
 		# exist in the same word, the nearer the better (by index).
-		A_curr = self.Matrix(alphabet, phonemes)
 		for word in wordlist:
 			for i, letter in enumerate(word.letters):
 				for j, phoneme in enumerate(word.phonemes):
@@ -132,8 +135,8 @@ class Aligner:
 					weight *= 0.75 if not matching else 1
 					# 2) Boost when phoneme equals letter.
 					weight *= 1.1 if letter == phoneme else 1
-					
-					A_curr.iterate(letter, phoneme, weight)
+					# Populate dict.
+					A_curr[letter + phoneme] = A_curr.get(letter + phoneme, 0) + weight
 					curr_score += weight
 			# Pad every word.
 			word.letters = self.LETTER_PAD + word.letters + self.LETTER_PAD
@@ -250,7 +253,7 @@ class Aligner:
 					# The maximum "belongs" to this cell's letter-phoneme pair.
 					letter, phoneme = D.labels_at_index(i, j)
 					new_phonemes =  phoneme + new_phonemes
-					A_n.iterate(letter, phoneme)
+					A_n[letter + phoneme] = A_n.get(letter + phoneme, 0) + 1
 				elif diff_i == 0 and diff_j == -1 and i == 0:
 					# this should never happen beyond the topmost row of padding.
 					# Let's not count these moments.
@@ -284,7 +287,7 @@ class Aligner:
 		prev_score = 0
 		iteration = 1
 		while prev_score != curr_score:
-			A_next = self.Matrix(alphabet, phonemes)
+			A_next = {}
 			#track_progress()
 			total = len(wordlist)
 			prev_score = curr_score
