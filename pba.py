@@ -47,10 +47,12 @@ class PronouncerByAnalogy:
 		def __str__(self):
 			s = ''
 			for arc in self.arcs:
+
 				inter_letters = ''
 				if arc.from_node != None and arc.to_node != None \
 				and arc.from_node.index != None and arc.to_node.index != None:
 					inter_letters = self.letters[arc.from_node.index + 1:arc.to_node.index]
+					inter_letters = '[' + inter_letters + ']' if inter_letters != '' else ''
 
 				inter = arc.intermediate_phonemes
 				if arc.intermediate_phonemes == '' or arc.intermediate_phonemes == None:
@@ -79,7 +81,7 @@ class PronouncerByAnalogy:
 			end_index = start_index + len(sub_letters) - 1
 			a = self.Node(sub_letters[0], sub_phones[0], start_index)
 			b = self.Node(sub_letters[-1], sub_phones[-1], end_index)
-			arc = self.Arc(sub_letters[1:-1], a, b)
+			arc = self.Arc(sub_phones[1:-1], a, b)
 			self.add_or_iterate(arc)
 			# Pair to border nodes if applicable.
 			is_start = (start_index == 0)
@@ -105,7 +107,7 @@ class PronouncerByAnalogy:
 		for entry_word in self.lexical_database:
 			pronunciation = self.lexical_database[entry_word]
 			length_difference = len(input_word) - len(entry_word)
-			start_index = 0
+			start_offset = 0
 			# a is always the longer word.
 			a, b = (input_word, entry_word) if length_difference >= 0 else (entry_word, input_word)
 			for i in range(abs(length_difference) + 1):
@@ -114,11 +116,13 @@ class PronouncerByAnalogy:
 				match_indices = ''
 				# Find common substring.
 				# Iterate over letters in the shorter word.
-				for i, char in enumerate(b):
-					if char == a[i]:
+				for j, char in enumerate(b):
+					if char == a[j]:
 						match_string += char
-						match_phone += pronunciation[i]
-						match_indices += str(i + start_index) + ',' # Add comma for 10+ letter words.
+						# When the entry word is smaller, pronunciation needs to shift right to remain accurate.
+						match_phone += pronunciation[j + i] if length_difference < 0 else pronunciation[j]
+						# When the entry word is bigger, matched indices need to be shifted right to remain accurate.
+						match_indices += str(j) + ',' if length_difference < 0 else str(j + i) + ',' # Add comma for 10+ letter words.
 					else:
 						match_string += ' '
 						match_phone += ' '
@@ -130,12 +134,15 @@ class PronouncerByAnalogy:
 				match_phones = [m for m in match_phones if len(m) > 1]
 				match_indices = [m for m in match_indices if len(m) > 2] # Account for comma.
 				# Add each phoneme to lattice.
-				for i, substring in enumerate(match_strings):
+				for j, substring in enumerate(match_strings):
 					# Add the substring, its phonemes, and the substring's starting index.
-					pl.add(substring, match_phones[i], int(match_indices[i].split(',')[0]))
+					# Add to lattice.
+					index_start = int(match_indices[j].split(',')[0])
+					pl.add(substring, match_phones[j], index_start)
 				# Iterate reference point if input word is the bigger word.
-				start_index += 1 if a == input_word else 0
+				start_offset += 1 if a == input_word else 0
 				a = a[1:]
 		print(pl)
 pba = PronouncerByAnalogy()
-pba.pronounce('definite')
+#pba.pronounce('definite')
+pba.pronounce('QQQQstrengthQQQQ')
