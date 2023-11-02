@@ -47,17 +47,18 @@ class PronouncerByAnalogy:
 		def __str__(self):
 			s = ''
 			for arc in self.arcs:
-				# No intermediates.
+				inter_letters = ''
+				if arc.from_node != None and arc.to_node != None \
+				and arc.from_node.index != None and arc.to_node.index != None:
+					inter_letters = self.letters[arc.from_node.index + 1:arc.to_node.index]
+
+				inter = arc.intermediate_phonemes
 				if arc.intermediate_phonemes == '' or arc.intermediate_phonemes == None:
-					key = '{}{}'.format(arc.from_node.matched_letter, arc.to_node.matched_letter)
-					val = '{}{}'.format(arc.from_node.phoneme, arc.to_node.phoneme)
-					s += '{} is pronounced {}: {} times\n'.format(key, val, arc.count)
-					continue
-				# Has intermediates.
-				key = '{}{}{}'.format(arc.from_node.matched_letter, \
-					arc.intermediate_phonemes, arc.to_node.matched_letter)
-				val = '{}{}{}'.format(arc.from_node.phoneme, arc.intermediate_phonemes, arc.to_node.phoneme)
-				s += '{} is pronounced {}: {} times\n'.format(key, val, arc.count)
+					inter = ''
+				key = '{}{}{}'.format(arc.from_node.matched_letter, inter_letters, arc.to_node.matched_letter)
+				val = '{}{}{}'.format(arc.from_node.phoneme, inter, arc.to_node.phoneme)
+
+				s += '{} [{}, {}] is pronounced {}: {} times\n'.format(key, arc.from_node.index, arc.to_node.index, val, arc.count)
 			return s
 
 		def add_or_iterate(self, arc):
@@ -73,7 +74,6 @@ class PronouncerByAnalogy:
 					self.nodes.append(arc.from_node)
 				if arc.to_node not in self.nodes:
 					self.nodes.append(arc.to_node)
-
 
 		def add(self, sub_letters, sub_phones, start_index):
 			end_index = start_index + len(sub_letters) - 1
