@@ -3,8 +3,6 @@
 # We map phoneme representations defined in dataset a to the ones outlined by Sejnowski and Rosenberg 
 # in their 1987 paper "Parallel Networks that Learn to Pronounce English Text."
 
-
-
 phoneme_map = \
 {
 				# FROM		TO 
@@ -63,6 +61,7 @@ unmapped = \
 {						# S&R examples:
 	# diphthongs		
 	'yu': 'Y',	# c_u_te
+	'yx': 'Y', # artic_u_lar
 	# clusters
 	'kS': 'K',	# se_x_ual
 	'ks': 'X',	# e_xc_ess
@@ -76,7 +75,7 @@ all_phonemes = list(phoneme_map.values()) + list(unmapped.values())
 all_letters = alphabet = [char for char in 'abcdefghijklmnopqrstuvwxyz']
 
 vowel_letters = 'aeiouy'
-vowel_sounds = 'aAc@^WiIoOEReUuY'
+vowel_sounds = 'aAc@^WiIoOEReUuYx'
 
 '''
 # These features described in S&R can be teased out of dataset a given additional context.
@@ -86,7 +85,7 @@ context_dependent = \
 	# TODO: Replace the dataset a representations with S&R
 									# S&R examples:
 	['ah0']: 'x',					# _a_bout
-	['ah0', 'l', 'END']: 'L',		# bott_le_
+	['xl', 'END']: 'L',		# bott_le_
 	['m', 'END']: 'M',				# absy_m_
 	['n', 'END']: 'N'				# butto_n_
 }
@@ -162,7 +161,12 @@ def preprocess():
 			current = ''
 			for ch in pronunciation:
 				if ch == ' ':		# The current phoneme just ended.
-					# Map to S&R representation and add to phonemes.
+					# Edge case: account for schwa, which is only implicitly defined in database a.
+					if current == 'ah' and stresses[-1] == '0':
+						phonemes += 'x'
+						current = ''
+						continue
+					# Regular case. Map to S&R representation and add to phonemes.
 					phonemes += phoneme_map[current]
 					current = ''
 				elif ch in ('0', '1', '2'):	# The current phoneme is about to end. Add the stress.

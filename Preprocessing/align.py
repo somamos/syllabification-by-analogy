@@ -105,7 +105,8 @@ class Aligner:
 
 	# Letters will map to row indices -- Phonemes, column indices -- of a
 	# so-called association matrix. Each cell stores the likelihood of a given letter-to-phoneme pairing.
-	def __init__(self, alphabet, phonemes, wordlist, vowel_letters = 'aeiouy', vowel_sounds = 'aAc@^WiIoOEReUuY', scale = 40, test_words = ['auction', 'articulated', 'thanked', 'watched'], *args):
+	def __init__(self, alphabet, phonemes, wordlist, vowel_letters = 'aeiouy', vowel_sounds = 'aAc@^WiIoOEReUuYx', scale = 40, test_words = ['auction', 'articulated', 'thanked', 'watched'], *args):
+		self.wordlist = wordlist
 		import math
 		# We stop iterating when curr_score stops changing.
 		curr_score = 0
@@ -132,9 +133,14 @@ class Aligner:
 					# 1) Make sure they belong to the same "group."
 					matching = ((letter in vowel_letters) == (phoneme in vowel_sounds))
 					prev_weight = weight
-					weight *= 0.75 if not matching else 1
+					weight *= 0.5 if not matching else 1
 					# 2) Boost when phoneme equals letter.
 					weight *= 1.1 if letter == phoneme else 1
+					# 3) Manual tweaks. 
+					# - letter r is mapping to vowel phoneme R in "ur" words, which makes no sense.
+					# Similarly, schwa is mapping to 'n' in rare cases.
+					weight *= 0.5 if letter == 'r' and phoneme == 'R' else 1
+					weight *= 0.5 if letter == 'n' and phoneme == 'x' else 1
 					# Populate dict.
 					A_curr[letter + phoneme] = A_curr.get(letter + phoneme, 0) + weight
 					curr_score += weight
@@ -272,23 +278,10 @@ class Aligner:
 			word.phonemes = self.PHONEME_PAD + new_phonemes
 			return A_n, score
 
-		def track_progress():
-			count = 0
-			total = 0
-			# EVALUATE PROGRESS:
-			for word in wordlist:
-				# (We need to add 2 because of paddings in this intermediate stage)
-				if(len(word.syllable_boundary_encodings) + 2 == len(word.letters) == len(word.phonemes) ): 
-					# Words with valid 1:1 mappings.
-					count += 1
-				total += 1
-			print('{} words have valid mappings, {} don\'t'.format(count, total - count))
-
 		prev_score = 0
 		iteration = 1
 		while prev_score != curr_score:
 			A_next = {}
-			#track_progress()
 			total = len(wordlist)
 			prev_score = curr_score
 			# Reset the score.
