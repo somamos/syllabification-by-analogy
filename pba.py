@@ -41,6 +41,55 @@ class PronouncerByAnalogy:
 				return not self.__eq__(other)
 			def __str__(self):
 				return '[{}:{}]'.format(self.intermediate_phonemes, self.count)
+
+		class Candidate:
+			# Initialize candidate as empty or as shallow copy.
+			def __init__(self, other=None):
+				# Init as empty.
+				if other == None:
+					self.path = [] # Includes all nodes.
+					self.arcs = [] # Arcs only.
+					self.path_strings = [] # String representation of candidate pronunciation.
+					self.score = 0
+					self.length = 0
+					return
+				# Init as shallow copy.
+				# Path and path string.
+				self.path = other.path[:]
+				self.arcs = other.arcs[:]
+				self.path_strings = other.path_strings[:]
+				# Heuristics.
+				self.length = other.length
+				self.score = other.score
+
+			def __str__(self):
+				return '{}: length {}, score {}'.format(''.join(self.path_strings), self.length, self.score)
+
+			# Append arc to this candidate with its nodes and heuristics.
+			def update(self, arc):
+				# Update path and path string.
+				self.path += [arc.from_node, arc]
+				self.arcs += [arc]
+				self.path_strings += [arc.from_node.phoneme, arc.intermediate_phonemes]
+				# Update heuristics.
+				self.score += arc.count
+				self.length += 1
+				# If it's the start, we don't need the first node, which merely represents the start node.
+				if len(self.arcs) == 1:
+					self.path = self.path[1:]
+					self.path_strings = self.path_strings[1:]
+
+			def pop(self):
+				# Decrement from heuristics.
+				self.score -= self.arcs[-1].count
+				self.length -= 1
+				# Pop from path and path string.
+				self.arcs = self.arcs[:-1]
+				self.path = self.path[:-2] # path and path_strings had [node, arc, node], three references to remove.
+				self.path_strings = self.path_strings[:-2]
+
+
+
 		# Initialize pronunciation lattice.
 		def __init__(self, letters):
 			self.letters = letters
@@ -68,40 +117,64 @@ class PronouncerByAnalogy:
 		def print_nodes(self):
 			for node in self.nodes:
 				print('Node {} has {} arcs into it and {} arcs out of it.'.format(node.matched_letter + node.phoneme + str(node.index), len(node.from_arcs), len(node.to_arcs)))
-		# Lists all paths via bfs.
-		def print_all_paths(self):
-			def util(u, d, path, path_strings):
+		# Lists all paths via breadth-first search.
+		def find_all_paths(self, print_progress = False):
+			candidates = []
+			def util(u, d, candidate_buffer):
 				u.visited = True
-				path.append(u)
-				path_strings.append(u.phoneme)
 				if u == d:
-					print(''.join(path_strings))
-					#print(''.join([str(path) for path in path]))
+					if print_progress:
+						print(candidate_buffer)
+					candidates.append(self.Candidate(candidate_buffer)) # Append a shallow copy.
 				else:
 					for arc in u.to_arcs:
 						v = arc.to_node
-						has_intermediate = len(arc.intermediate_phonemes)
-						path.append(arc)
-						if has_intermediate:
-							path_strings.append(arc.intermediate_phonemes) # Add to path buffer.
+						candidate_buffer.update(arc) # Append arc to buffer with its nodes and heuristics. 
 						if v.visited == False:
-							util(v, d, path, path_strings) # Recur over successor node.
-						path.pop() # Wipe path buffer.
-						if has_intermediate:
-							path_strings.pop() 
-				path.pop()	# Wipe path buffer.
-				path_strings.pop() 
+							util(v, d, candidate_buffer) # Recur over successor node.
+						candidate_buffer.pop() # Wipe candidate buffer.
 				u.visited = False # Allow future revisiting.
 			# Set visited to False for all.
 			for node in self.nodes:
 				node.visited = False
-			path = []
-			path_strings = []
+			candidate_buffer = self.Candidate()
 			# Begin breadth-first search listing all paths.
-			util(self.start, self.end, path, path_strings)			
+			util(self.start, self.end, candidate_buffer)
+			return candidates
+
+		def decide(self, candidates):
+			import sys
+			mins = []
+			minimum = sys.maxsize
+			for candidate in candidates:
+				if candidate.length < minimum:
+					# New minimum found. Flush previous minimums.
+					mins = []
+					minimum = candidate.length					
+				if candidate.length <= minimum:
+					mins.append(candidate) 
+			# If unique smallest length, choose that.
+			if len(mins) == 0:
+				print('No pronunciations found.')
+				return ''
+			if len(mins) == 1:
+				return mins
+			# Otherwise, return the best score.
+			maxs = []
+			maximum = -sys.maxsize
+			for candidate in mins:
+				if candidate.score > maximum:
+					# New maximum found. Flush previous maximums.
+					maxs = []
+					maximum = candidate.score
+				if candidate.score >= maximum:
+					maxs.append(candidate)
+			if len(maxs) != 1:
+				print('There was a tie between {} scores'.format(len(maxs)))
+			return maxs
 
 		def print(self):
-			self.print_all_paths()
+			self.find_all_paths(True)
 
 		def add(self, sub_letters, sub_phones, start_index):
 			def create_or_iterate_arc(inter, a, b):
@@ -192,7 +265,9 @@ class PronouncerByAnalogy:
 		print(pl)
 		print('Done.')
 		# TODO: Decision function.
-		pl.print()
+		candidates = pl.find_all_paths(print_progress = True)
+		best = pl.decide(candidates)
+		print('Best: {}'.format([str(item) for item in best]))
 pba = PronouncerByAnalogy()
-pba.pronounce('cot')
-#pba.pronounce('am_____trous')
+#pba.pronounce('cot')
+pba.pronounce('extrinctiveally')
