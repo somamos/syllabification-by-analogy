@@ -119,14 +119,18 @@ class PronouncerByAnalogy:
 				print('Node {} has {} arcs into it and {} arcs out of it.'.format(node.matched_letter + node.phoneme + str(node.index), len(node.from_arcs), len(node.to_arcs)))
 		# Lists all paths via breadth-first search.
 		def find_all_paths(self, print_progress = False):
+			import sys
+			min_length = sys.maxsize
 			candidates = []
 			def util(u, d, candidate_buffer):
+				nonlocal min_length
 				u.visited = True
 				if u == d:
 					if print_progress:
 						print(candidate_buffer)
 					candidates.append(self.Candidate(candidate_buffer)) # Append a shallow copy.
-				else:
+					min_length = candidate_buffer.length
+				elif candidate_buffer.length < min_length:
 					for arc in u.to_arcs:
 						v = arc.to_node
 						candidate_buffer.update(arc) # Append arc to buffer with its nodes and heuristics. 
@@ -160,7 +164,7 @@ class PronouncerByAnalogy:
 			max_score = max(min_lengths, key=attrgetter('score')).score
 			# Filter out the candidates by that score.
 			max_scores = list(filter(lambda x: x.score == max_score, min_lengths))
-			if len(max_scores) >= 1:
+			if len(max_scores) > 1:
 				print('There was a tie between {} scores.'.format(len(max_scores)))
 			return max_scores
 
@@ -261,4 +265,4 @@ class PronouncerByAnalogy:
 		print('Best: {}'.format([str(item) for item in best]))
 pba = PronouncerByAnalogy()
 #pba.pronounce('cot')
-pba.pronounce('extrinctiveally')
+pba.pronounce('empexterumonium')
