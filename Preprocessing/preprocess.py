@@ -101,8 +101,8 @@ class Word:
 		self.phonemes = phonemes
 		self.stresses = stresses
 		self.syllable_count = len(stresses)
-	# Database a had the stresses per syllable.
-	# Database b has the encoding patterns.
+	# Dataset a had the stresses per syllable.
+	# Dataset b has the encoding patterns.
 	# Combine them here.
 	# Return true when encoding successful, else false.
 	def inject_stresses(self, encoding_pattern):
@@ -132,7 +132,7 @@ def preprocess():
 	# To be filled with references to word objects.
 	corpus = []
 	dataset_b = {}
-	# location of database a and b
+	# location of dataset a and b
 	a_path = 'Raw/a.txt'
 	b_path = 'Raw/b.txt'
 
@@ -161,7 +161,7 @@ def preprocess():
 			current = ''
 			for ch in pronunciation:
 				if ch == ' ':		# The current phoneme just ended.
-					# Edge case: account for schwa, which is only implicitly defined in database a.
+					# Edge case: account for schwa, which is only implicitly defined in dataset a.
 					if current == 'ah' and stresses[-1] == '0':
 						phonemes += 'x'
 						current = ''
@@ -323,28 +323,7 @@ def preprocess():
 	print(fix_counter)
 	print('Of the {} unmatched, {} were salvaged.'.format(unmatched, salvaged))
 
-
-	# We need to find a way to inject null symbols:
-
-	# aardvark ardvark 1<<<>2<<
-	# aardvark a-rdvark 1<<<>2<<
-
-	# abbott @b^t 1<>0<<
-	# abbott @b-^t- 1<>0<<
-
-	# First attempt:
-	# While phonemes' length does not equal letters' length 
-	# Iterate through the phonemes, comparing each character to its respective letter.
-	# There are two cases when a - must be injected:
-	# 1. The ith phoneme is a vowel but the ith letter is a consonant.
-	# 2. The ith phoneme is a consonant but the ith letter is a vowel.
-
-	# No, because this would convert
-	# abbreviate ^briviet 0<>>1>02<<	to
-	# abbreviate ^br-iviet- 0<>>1>02<<	but what we really need is
-	# abbreviate ^-briviet- 0<>>1>02<<
-
-	# EM ALIGNMENT TIME (see 06-DAMPER.pdf, or, Aligning Text and Phonemes for Speech Technology Applications Using an EM-Like Algorithm)
+	# See "Aligning Text and Phonemes for Speech Technology Applications Using an EM-Like Algorithm"
 	from align import Aligner
 	# TODO: remove side effects and make this properly functional.
 	aligner = Aligner(all_letters, all_phonemes, final, vowel_letters, vowel_sounds)

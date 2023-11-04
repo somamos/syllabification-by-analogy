@@ -106,7 +106,6 @@ class Aligner:
 	# Letters will map to row indices -- Phonemes, column indices -- of a
 	# so-called association matrix. Each cell stores the likelihood of a given letter-to-phoneme pairing.
 	def __init__(self, alphabet, phonemes, wordlist, vowel_letters = 'aeiouy', vowel_sounds = 'aAc@^WiIoOEReUuYx', scale = 40, test_words = ['auction', 'articulated', 'thanked', 'watched'], *args):
-		self.wordlist = wordlist
 		import math
 		# We stop iterating when curr_score stops changing.
 		curr_score = 0
