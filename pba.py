@@ -14,6 +14,8 @@ class PronouncerByAnalogy:
 				self.from_arcs = [] 
 				self.to_arcs = []
 				self.visited = False
+			def __hash__(self):
+				return hash((self.matched_letter, self.phoneme, self.index))
 			def __eq__(self, other):
 				if not isinstance(other, type(self)):
 					return NotImplemented
@@ -94,11 +96,13 @@ class PronouncerByAnalogy:
 		def __init__(self, letters):
 			self.letters = letters
 
-			self.nodes = []
-			self.arcs = []
+			self.nodes = {}
+			self.arcs = {}
 
 			self.start = self.Node('#', '$', -1)
 			self.end = self.Node('#', '$', len(letters))
+			self.nodes[hash(('#', '$', -1))] = self.start
+			self.nodes[hash(('#', '$', len(letters)))] = self.start
 		# String interpretation of pronunciation lattice (unlinked. use print() for all linked pronunciations.)
 		def __str__(self):
 			s = ''
@@ -139,7 +143,7 @@ class PronouncerByAnalogy:
 						candidate_buffer.pop() # Wipe candidate buffer.
 				u.visited = False # Allow future revisiting.
 			# Set visited to False for all.
-			for node in self.nodes:
+			for node in self.nodes.values():
 				node.visited = False
 			candidate_buffer = self.Candidate()
 			# Begin breadth-first search listing all paths.
@@ -174,22 +178,24 @@ class PronouncerByAnalogy:
 		def add(self, sub_letters, sub_phones, start_index):
 			def create_or_iterate_arc(inter, a, b):
 				new = self.Arc(inter, a, b)
-				for arc in self.arcs:
-					if arc == new:
-						arc.count += 1
-						return arc 	# Found. Iterate and return.
-				self.arcs.append(new) # Not found. Add new one.
+				found = self.arcs.get(hash((inter, a, b)), None)
+				if found is not None:
+					found.count += 1
+					return found
+				self.arcs[hash((inter, a, b))] = new # Not found. Add new one.
+				found2 = self.arcs.get(hash((inter, a, b)), None)
 				a.to_arcs.append(new)
 				b.from_arcs.append(new)
 				return new				# Return.
 				
 			def create_or_find_node(l, p, i):
 				new = self.Node(l, p, i)
-				for node_ in self.nodes:
-					if new == node_:
-						return node_ # Found. Return.
-				self.nodes.append(new) # Not found. Add new one.
-				return new 				 # Return it.
+				found = self.nodes.get(hash((l, p, i)), None)
+				if found is not None:
+					return found # Found. Return.
+
+				self.nodes[hash((l, p, i))] = new # Not found. Add new one.
+				return new 	# Return it.
 			
 			# Add start node.
 			a = create_or_find_node(sub_letters[0], sub_phones[0], start_index)
@@ -203,6 +209,59 @@ class PronouncerByAnalogy:
 			elif start_index + len(sub_letters) == len(self.letters):
 				end_arc = create_or_iterate_arc('', b, self.end)
 
+	def cross_validate(self, path="Preprocessing/Out/output.txt", start = 0):
+		prev_time = time.time()
+		correct = 0
+		incorrect = 0
+		no_paths_found = 0
+		total = 0
+		trial = start
+		trial_count = len(self.lexical_database) - 1
+		trial_word = ''
+		ground_truth = ''
+		while trial < trial_count:
+			partial_database = {}
+			i = 0
+			print('Loading trial #{}...'.format(trial))
+			skipped = False
+			for i, line in enumerate(self.lexical_database.keys()):
+				if trial == i:
+					if len(line) <= 2:
+						print('Skipping trial. Word "{}" not long enough.'.format(line))
+						skipped = True
+						break
+					# Remove one word from entries.
+					trial_word = line
+					print('Word to pronounce: {}'.format(trial_word))
+					ground_truth = self.lexical_database[line]
+					#continue
+				partial_database[line] = self.lexical_database[line]
+			if skipped:
+				trial += 1
+				continue
+			best = self.pronounce(trial_word)
+			if best is not None:
+				outputs = [''.join(candidate.path_strings) for candidate in best]
+				print('Attempt(s): {}'.format(outputs))
+				if ground_truth in outputs:
+					correct += 1
+				else:
+					incorrect += 1
+			else:
+				print('Attempt: No paths found.')
+				no_paths_found += 1
+			print('Ground truth: {}'.format(ground_truth))
+
+			print('Time to load: {}'.format(time.time() - prev_time))
+			total = correct + incorrect + no_paths_found
+			print('{} / {} ({}%) Correct'.format(correct, total, 100*correct/total))
+
+			#print('{} vs. {}'.format(ground_truth, best[0]))
+			trial += 1
+			total += 1
+			prev_time = time.time()
+			print()
+
 	def __init__(self, path="Preprocessing/Out/output.txt"):
 		print('Loading lexical database...')
 		# Assign Lexical Database.
@@ -212,14 +271,19 @@ class PronouncerByAnalogy:
 				line = line.split()
 				self.lexical_database[line[0]] = line[1]
 				#print('{}: {}'.format(line[0], line[1]))
-
+	# Four different methods to populate the lattice, in order of written:
+	# 1) populate_a: Fastest, but looks janky and match_indices break when word length > 9.
+	# 2) populate_b: Second fastest, still a weird-looking implementation.
+	# 3) populate_c: Slowest but cleanest-written code. Maybe a time-memory tradeoff going on here?
+	# 4) populate_with_precalculated_substrings: Excellent for small input words. Horrible for anything else.
 	def pronounce(self, input_word):
 		print('Building pronunciation lattice for "{}"...'.format(input_word))
 		# Construct lattice.
 		pl = self.PronunciationLattice(input_word)
-		# Match Patterns. This is super janky but I wrote it when I was very sleepy.
-		for entry_word in self.lexical_database:
-			pronunciation = self.lexical_database[entry_word]
+		def populate_a():
+			nonlocal input_word
+			nonlocal entry_word
+			nonlocal phonemes
 			length_difference = len(input_word) - len(entry_word)
 			# a is always the longer word.
 			a, b = (input_word, entry_word) if length_difference >= 0 else (entry_word, input_word)
@@ -257,12 +321,129 @@ class PronouncerByAnalogy:
 					pl.add(substring, match_phones[j], index_start)
 				# Iterate reference point if input word is the bigger word.
 				a = a[1:]
-		print(pl)
-		print('Done.')
-		# TODO: Decision function.
-		candidates = pl.find_all_paths(print_progress = True)
+		# Second fastest.
+		def populate_b():
+			nonlocal input_word
+			nonlocal entry_word
+			nonlocal phonemes
+			length_difference = len(input_word) - len(entry_word)
+			# a is always the longer word.
+			a, b = (input_word, entry_word) if length_difference >= 0 else (entry_word, input_word)
+			# Figuratively "shift the smaller word to the right" by offset.
+			for offset in range(abs(length_difference) + 1):
+				curr_match_index = 0
+				curr_match_length = 0
+				curr_match_contents = ''
+				for k in range(1, len(b) + 1):
+					# Whether chars match two indices before k.
+					two_prior_match = (b[k - 2] == a[offset + k - 2]) if k > 1 else False # Treats word start as match start.
+					# Whether chars match one index before k.
+					one_prior_match = (b[k - 1] == a[offset + k - 1])
+					# Whether chars at k match.
+					curr_match = (b[k] == a[offset + k]) if k < len(b) else False # Treats word end as match end.
+
+					# A match just started.
+					if (not two_prior_match) and (one_prior_match) and (curr_match):
+						curr_match_index = k - 1
+						curr_match_length = 2
+						curr_match_contents = a[offset + k - 1] + a[offset + k]
+					# A match just ended.
+					elif (two_prior_match) and (one_prior_match) and (not curr_match):
+						c = curr_match_contents
+						i = curr_match_index
+						l = curr_match_length
+						o = offset
+						# Create and add match.
+						if length_difference < 0:
+							# When the entry word is bigger, phoneme indices "shift right" to remain accurate.
+							pl.add(c, phonemes[i + o : i + o + l], i)
+						else:
+							# When the entry word is smaller, matched indices need to shift right to remain accurate.
+							pl.add(c, phonemes[i : i + l], i + o)
+					# A match is in progress.
+					elif two_prior_match and one_prior_match and curr_match:
+						curr_match_contents += b[k]
+						curr_match_length += 1
+		# Clearest code, but slowest. Could be time-memory tradeoff.
+		def populate_c():
+			nonlocal input_word
+			nonlocal entry_word
+			nonlocal phonemes
+			length_difference = len(input_word) - len(entry_word)
+			# a is always the longer word.
+			a, b = (input_word, entry_word) if length_difference >= 0 else (entry_word, input_word)
+			for offset in range(abs(length_difference) + 1):
+				index = -1
+				length = 0
+				match = ''
+				char_buffer = [False, False]
+				for k in range(0, len(b) + 1):
+					# Iterate buffer.
+					char_buffer[0] = char_buffer[1] # Begin False (default).
+					char_buffer[1] = (b[k] == a[offset + k]) if k != len(b) else False # End False.
+					# Currently in the middle of a match.
+					if all(char_buffer):
+						length += 1
+						match += b[k] # Append to match.
+					# Match just started.
+					elif char_buffer == [False, True]:
+						index = k
+						length = 1
+						match = b[k] # Flush match.
+					# Match just ended.
+					elif char_buffer == [True, False]:
+						# Insufficient length.
+						if length == 1:
+							continue
+						if length_difference < 0:
+							# When the entry word is bigger, phoneme indices "shift right" to remain accurate.
+							pl.add(match, phonemes[index + offset : index + offset + length], index)
+						else:
+							# When the entry word is smaller, matched indices "shift right" to remain accurate.
+							pl.add(match, phonemes[index : index + length], index + offset)
+		# Allows speedup when input_word is reasonably small.
+		# Maps every possible substring greater than length 2 to their first index of occurrence
+		# in order, conveniently, from smallest to largest (per starting index).
+		precalculated_substrings = [[input_word[i:j] for j in range(i, len(input_word) + 1) if j - i > 1] for i in range(0, len(input_word) + 1)]
+		def populate_with_precalculated_substrings():
+			import re
+			nonlocal precalculated_substrings
+			nonlocal input_word
+			nonlocal entry_word
+			nonlocal phonemes
+			length_difference = len(input_word) - len(entry_word)
+			if len(input_word) > len(entry_word):
+				print('Warning. Incorrect population method. {} is longer than {}.'.format(input_word, entry_word))
+				return
+			for i, row in enumerate(precalculated_substrings):
+				for substring in row:
+					if substring in entry_word:
+						indices_in_entry = [m.start() for m in re.finditer('(?={})'.format(substring), entry_word)]
+						for entry_index in indices_in_entry:
+							pl.add(substring, phonemes[entry_index : entry_index + len(substring)], i)
+					else:
+						break # Skip to next row.
+
+		for entry_word in self.lexical_database:
+			phonemes = self.lexical_database[entry_word]
+			if len(input_word) < len(entry_word):
+				populate_with_precalculated_substrings()
+				continue
+			elif len(input_word) < 10:
+				populate_c()
+			else:
+				populate_b()
+
+		#print('Done.')
+		#print('{} nodes and {} arcs.'.format(len(pl.nodes), len(pl.arcs)))
+		candidates = pl.find_all_paths()
 		best = pl.decide(candidates)
-		print('Best: {}'.format([str(item) for item in best]))
+		#if best is not None:
+		#	print('Best: {}'.format([str(item) for item in best]))
+		return best
+
+import time
 pba = PronouncerByAnalogy()
-#pba.pronounce('cot')
-pba.pronounce('empexterumonium')
+#pba.pronounce('testing')
+#pba.pronounce('iota')
+pba.cross_validate(start=1000)
