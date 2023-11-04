@@ -140,38 +140,29 @@ class PronouncerByAnalogy:
 			candidate_buffer = self.Candidate()
 			# Begin breadth-first search listing all paths.
 			util(self.start, self.end, candidate_buffer)
+			if len(candidates) == 0:
+				print('Warning. No paths were found.')
 			return candidates
 
 		def decide(self, candidates):
-			import sys
-			mins = []
-			minimum = sys.maxsize
-			for candidate in candidates:
-				if candidate.length < minimum:
-					# New minimum found. Flush previous minimums.
-					mins = []
-					minimum = candidate.length					
-				if candidate.length <= minimum:
-					mins.append(candidate) 
-			# If unique smallest length, choose that.
-			if len(mins) == 0:
-				print('No pronunciations found.')
-				return ''
-			if len(mins) == 1:
-				return mins
-			# Otherwise, return the best score.
-			maxs = []
-			maximum = -sys.maxsize
-			for candidate in mins:
-				if candidate.score > maximum:
-					# New maximum found. Flush previous maximums.
-					maxs = []
-					maximum = candidate.score
-				if candidate.score >= maximum:
-					maxs.append(candidate)
-			if len(maxs) != 1:
-				print('There was a tie between {} scores'.format(len(maxs)))
-			return maxs
+			if len(candidates) == 0:
+				print('Candidates list is empty.')
+				return
+			from operator import attrgetter
+			# Find the minimum length among the candidates
+			min_length = min(candidates, key=attrgetter('length')).length
+			# Filter out the candidates by that length.
+			min_lengths = list(filter(lambda x: x.length == min_length, candidates))
+			if len(min_lengths) == 1:
+				return min_lengths
+
+			# Find the maximum score among the candidates with the minimum length
+			max_score = max(min_lengths, key=attrgetter('score')).score
+			# Filter out the candidates by that score.
+			max_scores = list(filter(lambda x: x.score == max_score, min_lengths))
+			if len(max_scores) >= 1:
+				print('There was a tie between {} scores.'.format(len(max_scores)))
+			return max_scores
 
 		def print(self):
 			self.find_all_paths(True)
