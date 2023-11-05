@@ -2,6 +2,8 @@
 # Implements the method described by Dedina and Nusbaum (1991)’s Pronounce
 # as summarized by Marchand & Damper's "Can syllabification improve
 # pronunciation by analogy of English?
+global DEBUG
+DEBUG = False
 class PronouncerByAnalogy:
 	# A representation of possible pronunciations of a word.
 	class PronunciationLattice:
@@ -327,6 +329,27 @@ class PronouncerByAnalogy:
 		# alignment         ->         alignment
 		#        malignant  ->  malignant
 		def populate_precalculated():
+			def add_entry(substr_index_tuple, bigger_w, length_diff):
+				substr, i = substr_index_tuple
+				indices_in_bigger = [m.start() for m in re.finditer('(?={})'.format(substr), bigger_w)]
+				# Add to the lattice.
+				for bigger_index in indices_in_bigger:
+					# Entry word is the bigger word.
+					if length_diff <= 0:
+						# The smaller word's starting index, then, is i, because of how input_precalculated_substrings are organized.
+						# Locate the indices in the entry word out of which to slice the phonemes.
+						if DEBUG:
+							print('Entry word bigger:')
+							print('{}, {}, {}, {}, {}'.format(input_word, entry_word, substr, phonemes[bigger_index : bigger_index + len(substr)], i))
+							print('{}[{} : {} + {}]'.format(phonemes, bigger_index, bigger_index, len(substr)))
+						pl.add(substr, phonemes[bigger_index : bigger_index + len(substr)], i)
+					# Input word is the bigger word.
+					else:
+						if DEBUG:
+							print('Input word bigger:')
+							print('{}, {}, {}, {}, {}'.format(input_word, entry_word, substr, phonemes[i : i + len(substr)], bigger_index))
+							print('{}[{} : {} + {}]'.format(phonemes, i, i, len(substr)))
+						pl.add(substr, phonemes[i : i + len(substr)], bigger_index)
 			# TODO: Only match upon a break. That way,
 			# to,
 			# tor,
@@ -346,25 +369,43 @@ class PronouncerByAnalogy:
 				smaller_words_substrings = self.substring_database[entry_word]
 				bigger_word = input_word
 
+			NO_MATCH = ('', -1)
+			# A tuple saving the previous match and its index.
+			# Due to the sorted order of (both input's and entries') precalculated substrings,
+			# A first NON-match often implies the previous substring DID match.
+			# To avoid double counting smaller sections of the same substring e.g.:
+			# to,
+			# tor,
+			# tori,
+			# we must only add items after the first nonmatch.
+			prev_matching_substring = NO_MATCH
 			for i, row in enumerate(smaller_words_substrings):
-				for substring in row:
+				for j, substring in enumerate(row):
+
 					if substring not in bigger_word:
+						# Ignore when NEVER had a match.
+						if prev_matching_substring == NO_MATCH:
+							break
+						# See "to, tor, tori" above for reasoning.
+						#print('{} is being added!'.format(prev_matching_substring))
+						add_entry(prev_matching_substring, bigger_word, length_difference)
+						# Flush the buffer so we know, upon loop end, whether the last remaining prev_match
+						# has been accounted for or not. (Imagine a scenario where the very last checked substring
+						# happens to perfectly match. In such cases, the "substring not in bigger_word" branch
+						# would never run. Therefore, we must check for prev_match after the loop as well.)
+						prev_matching_substring = NO_MATCH
+						# The above case also guarantees no more matches in this row.
 						break
-					indices_in_bigger = [m.start() for m in re.finditer('(?={})'.format(substring), bigger_word)]
-					# Add to the lattice.
-					for bigger_index in indices_in_bigger:
-						if length_difference <= 0:
-							# Entry word is the bigger word.
-							# The smaller word's starting index, then, is i, because of how input_precalculated_substrings are organized.
-							# Locate the indices in the entry word out of which to slice the phonemes.
-							pl.add(substring, phonemes[bigger_index : bigger_index + len(substring)], i)
-						else:
-							# Input word is the bigger word.
-							pl.add(substring, phonemes[i : i + len(substring)], bigger_index)
+					else:
+						# Store this in the buffer to be added upon first lack of match.
+						prev_matching_substring = (substring, i)
+						#print('{} will be added later...'.format(prev_matching_substring))
+				if prev_matching_substring != NO_MATCH:
+					add_entry(prev_matching_substring, bigger_word, length_difference)
 		for entry_word in self.lexical_database:
 			phonemes = self.lexical_database[entry_word]
-			#populate_precalculated()
-			populate_legacy()
+			populate_precalculated()
+			#populate_legacy()
 
 		print('Done.')
 		print('{} nodes and {} arcs.'.format(len(pl.nodes), len(pl.arcs)))
@@ -376,6 +417,6 @@ class PronouncerByAnalogy:
 
 import time
 pba = PronouncerByAnalogy()
-pba.pronounce('autoperambulatory')
+#pba.pronounce('autoperambulatorification')
 #pba.pronounce('iota')
-#pba.cross_validate(start=1000)
+pba.cross_validate(start=10000)
