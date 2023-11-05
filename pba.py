@@ -316,10 +316,9 @@ class PronouncerByAnalogy:
 						else:
 							# When the entry word is smaller, matched indices "shift right" to remain accurate.
 							pl.add(match, phonemes[index : index + length], index + offset)
-		# Allows speedup when input_word is reasonably small.
 		# Maps every possible substring greater than length 2 to their first index of occurrence
 		# in order, conveniently, from smallest to largest (per starting index).
-		precalculated_substrings = [[input_word[i:j] for j in range(i, len(input_word) + 1) if j - i > 1] for i in range(0, len(input_word) + 1)]
+		input_precalculated_substrings = [[input_word[i:j] for j in range(i, len(input_word) + 1) if j - i > 1] for i in range(0, len(input_word) + 1)]
 		# Every word has their substrings precalculated. Search for the smaller word
 		# in the larger word. This is the equivalent to Marchand & Damper's improvement
 		# of beginning with the end of the shorter word aligned with the start of the longer word,
@@ -328,47 +327,55 @@ class PronouncerByAnalogy:
 		# alignment         ->         alignment
 		#        malignant  ->  malignant
 		def populate_precalculated():
+			# TODO: Only match upon a break. That way,
+			# to,
+			# tor,
+			# tori,
+			# these substrings won't get double counted.
 			import re
-			nonlocal precalculated_substrings
+			nonlocal input_precalculated_substrings
 			nonlocal input_word
 			nonlocal entry_word
 			nonlocal phonemes
 			length_difference = len(input_word) - len(entry_word)
 			# Input word is shorter.
 			if length_difference <= 0:
-				for i, row in enumerate(precalculated_substrings):
-					for substring in row:
-						if substring in entry_word:
-							indices_in_entry = [m.start() for m in re.finditer('(?={})'.format(substring), entry_word)]
-							for entry_index in indices_in_entry:
-								pl.add(substring, phonemes[entry_index : entry_index + len(substring)], i)
-						else:
-							break # Skip to next row.
-				return
-			# Entry word is shorter.
-			for i, row in enumerate(self.substring_database[entry_word]):
+				smaller_words_substrings = input_precalculated_substrings
+				bigger_word = entry_word
+			else:
+				smaller_words_substrings = self.substring_database[entry_word]
+				bigger_word = input_word
+
+			for i, row in enumerate(smaller_words_substrings):
 				for substring in row:
-					if substring in input_word:
-						indices_in_entry = [m.start() for m in re.finditer('(?={})'.format(substring), entry_word)]
-						for entry_index in indices_in_entry:
-							return (substring, phonemes[entry_index : entry_index + len(substring)], entry_index + i)
-					else:
-						break # Skip to next row.
+					if substring not in bigger_word:
+						break
+					indices_in_bigger = [m.start() for m in re.finditer('(?={})'.format(substring), bigger_word)]
+					# Add to the lattice.
+					for bigger_index in indices_in_bigger:
+						if length_difference <= 0:
+							# Entry word is the bigger word.
+							# The smaller word's starting index, then, is i, because of how input_precalculated_substrings are organized.
+							# Locate the indices in the entry word out of which to slice the phonemes.
+							pl.add(substring, phonemes[bigger_index : bigger_index + len(substring)], i)
+						else:
+							# Input word is the bigger word.
+							pl.add(substring, phonemes[i : i + len(substring)], bigger_index)
 		for entry_word in self.lexical_database:
 			phonemes = self.lexical_database[entry_word]
-			populate_precalculated()
-			#populate_legacy()
+			#populate_precalculated()
+			populate_legacy()
 
-		#print('Done.')
-		#print('{} nodes and {} arcs.'.format(len(pl.nodes), len(pl.arcs)))
+		print('Done.')
+		print('{} nodes and {} arcs.'.format(len(pl.nodes), len(pl.arcs)))
 		candidates = pl.find_all_paths()
 		best = pl.decide(candidates)
-		#if best is not None:
-		#	print('Best: {}'.format([str(item) for item in best]))
+		if best is not None:
+			print('Best: {}'.format([str(item) for item in best]))
 		return best
 
 import time
 pba = PronouncerByAnalogy()
-#pba.pronounce('testing')
+pba.pronounce('autoperambulatory')
 #pba.pronounce('iota')
-pba.cross_validate(start=1000)
+#pba.cross_validate(start=1000)
