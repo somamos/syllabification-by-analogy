@@ -138,6 +138,7 @@ def preprocess():
 
 	# Dataset a has pronunciation information.
 	with open(a_path, 'r', encoding='latin-1') as a:
+		ending_in_schwa_count = 0
 		for line in a:
 			# Ignore comments
 			if line.startswith(';;;'): 
@@ -174,7 +175,13 @@ def preprocess():
 				else:
 					current += ch	# Phoneme currently being built.
 			# Add last phoneme.
-			phonemes += phoneme_map[current]
+			if current == 'ah' and stresses[-1] == '0':
+				ending_in_schwa_count += 1
+				phonemes += 'x'
+				#print('Word {} that ended in schwa has been fixed to {}'.format(word, phonemes))
+				current = ''
+			else:
+				phonemes += phoneme_map[current]
 
 			# Handle unmapped phonemes.
 			# A bit on the theory: these extra phonemes help ascertain
@@ -186,6 +193,7 @@ def preprocess():
 					#print('Simplifying {} to {}'.format(old, phonemes))
 			corpus.append(Word(letters, phonemes, stresses))
 			#print('Added {}, {}, and {} to corpus.'.format(letters, phonemes, stresses))
+		print('{} words ending in schwa have been fixed.'.format(ending_in_schwa_fix))
 	print('{} words added from a.'.format(len(corpus)))
 
 
