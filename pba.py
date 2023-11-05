@@ -266,106 +266,21 @@ class PronouncerByAnalogy:
 		print('Loading lexical database...')
 		# Assign Lexical Database.
 		self.lexical_database = {}
+		self.substring_database = {}
 		with open(path, 'r', encoding='latin-1') as f:
 			for line in f:
 				line = line.split()
 				self.lexical_database[line[0]] = line[1]
-				#print('{}: {}'.format(line[0], line[1]))
-	# Four different methods to populate the lattice, in order of written:
-	# 1) populate_a: Fastest, but looks janky and match_indices break when word length > 9.
-	# 2) populate_b: Second fastest, still a weird-looking implementation.
-	# 3) populate_c: Slowest but cleanest-written code. Maybe a time-memory tradeoff going on here?
-	# 4) populate_with_precalculated_substrings: Excellent for small input words. Horrible for anything else.
+				self.substring_database[line[0]] = [[line[0][i:j] for j in range(i, len(line[0]) + 1) \
+					if j - i > 1] for i in range(0, len(line[0]) + 1)]
+
 	def pronounce(self, input_word):
 		print('Building pronunciation lattice for "{}"...'.format(input_word))
 		# Construct lattice.
 		pl = self.PronunciationLattice(input_word)
-		def populate_a():
-			nonlocal input_word
-			nonlocal entry_word
-			nonlocal phonemes
-			length_difference = len(input_word) - len(entry_word)
-			# a is always the longer word.
-			a, b = (input_word, entry_word) if length_difference >= 0 else (entry_word, input_word)
-			# i is the number of characters that will get lopped off the bigger word.
-			for i in range(abs(length_difference) + 1):
-				match_string = ''
-				match_phone = ''
-				match_indices = ''
-				# Find common substring.
-				# Iterate over letters in the shorter word.
-				for j, char in enumerate(b):
-					if char == a[j]:
-						match_string += char
-						# When the entry word is smaller, pronunciation needs to shift right to remain accurate.
-						match_phone += pronunciation[j + i] if length_difference < 0 else pronunciation[j]
-						# When the entry word is bigger, matched indices need to shift right to remain accurate.
-						match_indices += str(j) + ',' if length_difference < 0 else str(j + i) + ',' # Add comma for 10+ letter words.
-					else:
-						match_string += ' '
-						match_phone += ' '
-						match_indices += ' '
-				# Separate by the ' ' gaps.
-				match_strings = match_string.split()
-				match_phones = match_phone.split()
-				match_indices = match_indices.split()
-				# Ignore single-character matches.
-				match_strings = [m for m in match_strings if len(m) > 1]
-				match_phones = [m for m in match_phones if len(m) > 1]
-				match_indices = [m for m in match_indices if len(m) > 2] # Account for comma.
-				# Add each matched phoneme to lattice.
-				for j, substring in enumerate(match_strings):
-					# Add the substring, its phonemes, and the substring's starting index.
-					# Add to lattice.
-					index_start = int(match_indices[j].split(',')[0])
-					pl.add(substring, match_phones[j], index_start)
-				# Iterate reference point if input word is the bigger word.
-				a = a[1:]
 		# Second fastest.
-		def populate_b():
-			nonlocal input_word
-			nonlocal entry_word
-			nonlocal phonemes
-			length_difference = len(input_word) - len(entry_word)
-			# a is always the longer word.
-			a, b = (input_word, entry_word) if length_difference >= 0 else (entry_word, input_word)
-			# Figuratively "shift the smaller word to the right" by offset.
-			for offset in range(abs(length_difference) + 1):
-				curr_match_index = 0
-				curr_match_length = 0
-				curr_match_contents = ''
-				for k in range(1, len(b) + 1):
-					# Whether chars match two indices before k.
-					two_prior_match = (b[k - 2] == a[offset + k - 2]) if k > 1 else False # Treats word start as match start.
-					# Whether chars match one index before k.
-					one_prior_match = (b[k - 1] == a[offset + k - 1])
-					# Whether chars at k match.
-					curr_match = (b[k] == a[offset + k]) if k < len(b) else False # Treats word end as match end.
-
-					# A match just started.
-					if (not two_prior_match) and (one_prior_match) and (curr_match):
-						curr_match_index = k - 1
-						curr_match_length = 2
-						curr_match_contents = a[offset + k - 1] + a[offset + k]
-					# A match just ended.
-					elif (two_prior_match) and (one_prior_match) and (not curr_match):
-						c = curr_match_contents
-						i = curr_match_index
-						l = curr_match_length
-						o = offset
-						# Create and add match.
-						if length_difference < 0:
-							# When the entry word is bigger, phoneme indices "shift right" to remain accurate.
-							pl.add(c, phonemes[i + o : i + o + l], i)
-						else:
-							# When the entry word is smaller, matched indices need to shift right to remain accurate.
-							pl.add(c, phonemes[i : i + l], i + o)
-					# A match is in progress.
-					elif two_prior_match and one_prior_match and curr_match:
-						curr_match_contents += b[k]
-						curr_match_length += 1
-		# Clearest code, but slowest. Could be time-memory tradeoff.
-		def populate_c():
+		# The original method of Dedina and Nusbaum. Words begin left-aligned and end right-aligned.
+		def populate_legacy():
 			nonlocal input_word
 			nonlocal entry_word
 			nonlocal phonemes
@@ -405,34 +320,44 @@ class PronouncerByAnalogy:
 		# Maps every possible substring greater than length 2 to their first index of occurrence
 		# in order, conveniently, from smallest to largest (per starting index).
 		precalculated_substrings = [[input_word[i:j] for j in range(i, len(input_word) + 1) if j - i > 1] for i in range(0, len(input_word) + 1)]
-		def populate_with_precalculated_substrings():
+		# Every word has their substrings precalculated. Search for the smaller word
+		# in the larger word. This is the equivalent to Marchand & Damper's improvement
+		# of beginning with the end of the shorter word aligned with the start of the longer word,
+		# ending with the start of the shorter word aligned with the end of the longer word, E.G.:
+		#        FROM       ->           TO
+		# alignment         ->         alignment
+		#        malignant  ->  malignant
+		def populate_precalculated():
 			import re
 			nonlocal precalculated_substrings
 			nonlocal input_word
 			nonlocal entry_word
 			nonlocal phonemes
 			length_difference = len(input_word) - len(entry_word)
-			if len(input_word) > len(entry_word):
-				print('Warning. Incorrect population method. {} is longer than {}.'.format(input_word, entry_word))
+			# Input word is shorter.
+			if length_difference <= 0:
+				for i, row in enumerate(precalculated_substrings):
+					for substring in row:
+						if substring in entry_word:
+							indices_in_entry = [m.start() for m in re.finditer('(?={})'.format(substring), entry_word)]
+							for entry_index in indices_in_entry:
+								pl.add(substring, phonemes[entry_index : entry_index + len(substring)], i)
+						else:
+							break # Skip to next row.
 				return
-			for i, row in enumerate(precalculated_substrings):
+			# Entry word is shorter.
+			for i, row in enumerate(self.substring_database[entry_word]):
 				for substring in row:
-					if substring in entry_word:
+					if substring in input_word:
 						indices_in_entry = [m.start() for m in re.finditer('(?={})'.format(substring), entry_word)]
 						for entry_index in indices_in_entry:
-							pl.add(substring, phonemes[entry_index : entry_index + len(substring)], i)
+							return (substring, phonemes[entry_index : entry_index + len(substring)], entry_index + i)
 					else:
 						break # Skip to next row.
-
 		for entry_word in self.lexical_database:
 			phonemes = self.lexical_database[entry_word]
-			if len(input_word) < len(entry_word):
-				populate_with_precalculated_substrings()
-				continue
-			elif len(input_word) < 10:
-				populate_c()
-			else:
-				populate_b()
+			populate_precalculated()
+			#populate_legacy()
 
 		#print('Done.')
 		#print('{} nodes and {} arcs.'.format(len(pl.nodes), len(pl.arcs)))
