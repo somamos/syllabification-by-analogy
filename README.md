@@ -11,19 +11,17 @@ This work is leading up to a Python implementation of the Syllabification by Ana
 1. readme.md
     - [X] Update readme
 2. preprocess.py
-    - [ ] Account for remaining consonant clusters & diphthongs.
-    - [ ] Gauge encodings without nuclei post-alignment.
-    - [ ] Scrutinize outliers during syllable encoding.
-    - [ ] Guarantee 1 nucleus per syllable.
+    - [X] Gauge encodings without nuclei post-alignment.
+    - [X] Scrutinize outliers during syllable encoding.
+    - [ ] Decide between inferring nucleus locations before or after alignment. Is it smart to anchor nuclei so naively based on such simple rules? Or should we instead let alignment do its thing and determine the nucleus per syllable post-alignment (ditching mappings of multiple aligned nuclei per database-b-encoded syllable?)
 3. align.py
     - [ ] Refactor to remove side effects.
-    - [ ] Prioritize encodings' nucleus locations during alignment (list of index tuples?).
+    - [X] Prioritize encodings' nucleus locations during alignment (list of index tuples?).
     - [X] Rewrite description of "suppression above the diagonal."
-    - [ ] Retry normalization with power transformation.
 4. pba.py
     - [ ] Refactor to prepare for syllabification (generalize Lattice).
     - [ ] Implement the 5 scoring systems described by Marchand & Damper.
-    - [ ] Implement "silence problem" fix (flag bigrams unrepresented in the dataset).
+    - [ ] Fix "silence problem" (flag bigrams unrepresented in the dataset).
     - [ ] Add sba (split encodings by syllable).
 
 # Overview
