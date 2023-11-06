@@ -18,7 +18,7 @@ This work is leading up to a Python implementation of the Syllabification by Ana
 3. align.py
     - [ ] Refactor to remove side effects.
     - [ ] Prioritize encodings' nucleus locations during alignment (list of index tuples?).
-    - [ ] Rewrite description of "suppression above the diagonal."
+    - [X] Rewrite description of "suppression above the diagonal."
     - [ ] Retry normalization with power transformation.
 4. pba.py
     - [ ] Refactor to prepare for syllabification (generalize Lattice).

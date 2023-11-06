@@ -3,7 +3,8 @@
 # which can be read here: https://eprints.soton.ac.uk/260616/1/06-DAMPER.pdf
 
 # Improvements over the original paper:
-# - Discourages right-alignment without destroying valid silent letters.
+# - Gently discourage runaway matching, in which an early letter 
+#   wrongly pairs with a late phoneme.
 #   (ctrl+f: "Suppress above the diagonal")
 # - Uses "association dict" instead of "association matrix."
 #   About 60% performance boost (from ~5 seconds down to ~3 seconds per 10,000 words scored).
@@ -167,7 +168,7 @@ class Aligner:
 			D = self.Matrix(word.letters, word.phonemes)
 
 			# Suppress above the diagonal.
-			# Severely discourage beginning with null phonemes.
+			# Discourage injecting an unreasonable number of null phonemes.
 			for i, i_v in enumerate(word.letters):
 				for j, j_v in enumerate(word.phonemes):
 					# Words like 'knowledge', 'psychology', 'gnome', and 'pterodactyl' are very rare,
