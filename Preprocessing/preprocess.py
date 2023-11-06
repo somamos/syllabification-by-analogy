@@ -67,6 +67,7 @@ unmapped = \
 	'ks': 'X',	# e_xc_ess
 	'gz': '#', 	# e_x_amine
 	'w^': '*', 	# _o_ne
+	'wx': '*',
 	'ts': '!',	# na_z_i
 	'kw': 'Q'	# _qu_est
 }
@@ -75,7 +76,7 @@ all_phonemes = list(phoneme_map.values()) + list(unmapped.values())
 all_letters = alphabet = [char for char in 'abcdefghijklmnopqrstuvwxyz']
 
 vowel_letters = 'aeiouy'
-vowel_sounds = 'aAc@^WiIoOEReUuYx'
+nuclei = 'aAc@^WiIoOEReUuYx*'
 
 '''
 # These features described in S&R can be teased out of dataset a given additional context.
@@ -101,6 +102,8 @@ class Word:
 		self.phonemes = phonemes
 		self.stresses = stresses
 		self.syllable_count = len(stresses)
+		# "anchor" pre-alignment phoneme nucleus indices to the encodings' nucleus indices.
+		self.anchors = []
 	# Dataset a had the stresses per syllable.
 	# Dataset b has the encoding patterns.
 	# Combine them here.
@@ -116,6 +119,9 @@ class Word:
 			slots += 1
 
 		if slots != self.syllable_count:
+			# TODO: Figure out what to do with "ism" words.
+			#print('{}, {}, {} had {} slots but {} syllables'.format(self.letters, \
+			#	self.phonemes, encoding_pattern, slots, self.syllable_count))
 			return False
 		final_encoding = ''
 		index = 0
@@ -193,11 +199,12 @@ def preprocess():
 					#print('Simplifying {} to {}'.format(old, phonemes))
 			corpus.append(Word(letters, phonemes, stresses))
 			#print('Added {}, {}, and {} to corpus.'.format(letters, phonemes, stresses))
-		print('{} words ending in schwa have been fixed.'.format(ending_in_schwa_fix))
+		print('{} words ending in schwa have been fixed.'.format(ending_in_schwa_count))
 	print('{} words added from a.'.format(len(corpus)))
 
-
 	# Dataset b has syllable boundary information.
+	# For the sake of consistency, and simplicity, let's try
+	# treating these simple rules for nucleus determination as ground truth.
 	with open(b_path, 'r', encoding='latin-1') as b:
 		for line in b:
 			line = line.lower()
@@ -248,6 +255,7 @@ def preprocess():
 				# Sanity check: These should always be equal.
 				if(len(letters) != len(syllable_boundary_encodings)):
 					print('{} does not map evenly on to {}'.format(letters, syllable_boundary_encodings))
+
 				dataset_b[letters] = syllable_boundary_encodings
 	print('{} words added from b.'.format(len(dataset_b.keys())))
 
@@ -331,10 +339,39 @@ def preprocess():
 	print(fix_counter)
 	print('Of the {} unmatched, {} were salvaged.'.format(unmatched, salvaged))
 
+	# Populate word anchors.
+	# Phoneme nuclei "belong" where the syllable encoding nucleus is.
+	# We pair the nuclei's indices to the letter associated with the nucleus.
+	for word in final:
+		# Count phonemes' nuclei.
+		phoneme_nucleus_locations = []
+		for i, ch in enumerate(word.phonemes):
+			if ch in nuclei:
+				phoneme_nucleus_locations.append(i)
+		# Count boundary encodings' nuclei.
+		encoded_nucleus_locations = []
+		for j, ch in enumerate(word.syllable_boundary_encodings):
+			if ch in '012':
+				encoded_nucleus_locations.append(j)
+		# If the lengths are different, a 1:1 mapping cannot be relied upon.
+		if len(phoneme_nucleus_locations) != len(encoded_nucleus_locations):
+			print('Phonemes disagree with encodings in word {}'.format(word.letters))
+			continue
+		# If syllable boundary encodings don't map onto letters 1:1, then the implied location is bunk.
+		elif len(word.syllable_boundary_encodings) != len(word.letters):
+			print('Length of word {} is {} versus encoding ({}) length {}. Index mappings won\'t work.'.format( \
+				word.letters, len(word.letters), word.syllable_boundary_encodings, len(word.syllable_boundary_encodings)))
+			continue
+		for index in range(len(encoded_nucleus_locations)):
+			word.anchors.append((encoded_nucleus_locations[index],phoneme_nucleus_locations[index]))
+			#print('{}th index in the word {} anchored to the {}th phoneme of {}.'.format( \
+			#	encoded_nucleus_locations[index], word.letters, phoneme_nucleus_locations[index], word.phonemes))
+
+
 	# See "Aligning Text and Phonemes for Speech Technology Applications Using an EM-Like Algorithm"
 	from align import Aligner
 	# TODO: remove side effects and make this properly functional.
-	aligner = Aligner(all_letters, all_phonemes, final, vowel_letters, vowel_sounds)
+	aligner = Aligner(all_letters, all_phonemes, final, vowel_letters, nuclei)
 
 	# Finally, print the dataset.
 	out = []
@@ -350,12 +387,8 @@ def preprocess():
 		else:
 			errors = word.append_self(errors)
 		total += 1
-	print('{} words had valid mappings, {} didn\'t'.format(count, total - count))
-	# VALID WORDS:
 	with open('Out/output.txt', 'w') as c:
 		c.writelines(out)
-	with open('Out/errors.txt', 'w') as c:
-		c.writelines(errors)
 
 preprocess()
 

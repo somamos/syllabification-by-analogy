@@ -130,17 +130,11 @@ class Aligner:
 					# Weighted method.
 					weight = scale / (1 + abs(i - j))
 					# Tune the weights:
-					# 1) Make sure they belong to the same "group."
-					matching = ((letter in vowel_letters) == (phoneme in vowel_sounds))
-					prev_weight = weight
-					weight *= 0.5 if not matching else 1
-					# 2) Boost when phoneme equals letter.
-					weight *= 1.1 if letter == phoneme else 1
-					# 3) Manual tweaks. 
-					# - letter r is mapping to vowel phoneme R in "ur" words, which makes no sense.
-					# Similarly, schwa is mapping to 'n' in rare cases.
-					weight *= 0.5 if letter == 'r' and phoneme == 'R' else 1
-					weight *= 0.5 if letter == 'n' and phoneme == 'x' else 1
+					# Boost if word anchors' indices match.
+					if (word.anchors is not None) and (len(word.anchors) != 0):
+						for letter_phoneme_anchor in word.anchors:
+							if i == letter_phoneme_anchor[0] and j == letter_phoneme_anchor[1]:
+								weight *= 2
 					# Populate dict.
 					A_curr[letter + phoneme] = A_curr.get(letter + phoneme, 0) + weight
 					curr_score += weight
