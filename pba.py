@@ -264,13 +264,21 @@ class PronouncerByAnalogy:
 		self.substring_database = {}
 		with open(path, 'r', encoding='latin-1') as f:
 			for line in f:
+				# Add # and $.
 				line = line.split()
+				line[0] = '#{}#'.format(line[0])
+				line[1] = '${}$'.format(line[1])
 				self.lexical_database[line[0]] = line[1]
 				self.substring_database[line[0]] = [[line[0][i:j] for j in range(i, len(line[0]) + 1) \
 					if j - i > 1] for i in range(0, len(line[0]) + 1)]
 
 	# Removes input word from the dataset before pronouncing if present.
 	def cross_validate_pronounce(self, input_word, verbose=False):
+		if not input_word.startswith('#'):
+			input_word = '#' + input_word
+		if not input_word.endswith('#'):
+			input_word = input_word + '#'
+
 		trimmed_lexical_database = {}
 		trimmed_substring_database = {}
 		answer = ''
@@ -283,7 +291,7 @@ class PronouncerByAnalogy:
 				found = True
 				answer = self.lexical_database[word]
 				if verbose:
-					print('Removed {} from dataset.'.format(input_word))
+					print('Removed {} ({}) from dataset.'.format(input_word, answer))
 		if not found:
 			print('The dataset did not have {}.'.format(input_word))
 		choices = self.pronounce(input_word, (trimmed_lexical_database, trimmed_substring_database), False)
@@ -438,4 +446,5 @@ import time
 pba = PronouncerByAnalogy()
 #pba.pronounce('autoperambulatorification', verbose=True)
 #pba.pronounce('iota')
-pba.cross_validate_pronounce('attempt', verbose=True)
+pba.cross_validate_pronounce('canopy', verbose=True)
+#pba.cross_validate(1000)
