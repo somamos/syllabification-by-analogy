@@ -154,7 +154,7 @@ class PronouncerByAnalogy:
 				print('Warning. No paths were found.')
 			return candidates
 
-		def decide(self, candidates):
+		def decide(self, candidates, verbose=False):
 			if len(candidates) == 0:
 				print('Candidates list is empty.')
 				return
@@ -163,6 +163,8 @@ class PronouncerByAnalogy:
 			min_length = min(candidates, key=attrgetter('length')).length
 			# Filter out the candidates by that length.
 			min_lengths = list(filter(lambda x: x.length == min_length, candidates))
+			if verbose:
+				print('Minimum length: {}\n Candidates of minimum length: {}'.format(min_length, [''.join(choice.path_strings) for choice in min_lengths]))
 			if len(min_lengths) == 1:
 				# Convert to strings.
 				min_lengths = [''.join(choice.path_strings) for choice in min_lengths]
@@ -271,7 +273,7 @@ class PronouncerByAnalogy:
 	def cross_validate_pronounce(self, input_word, verbose=False):
 		trimmed_lexical_database = {}
 		trimmed_substring_database = {}
-
+		answer = ''
 		found = False
 		for word in self.lexical_database.keys():
 			if word != input_word:
@@ -285,6 +287,11 @@ class PronouncerByAnalogy:
 		if not found:
 			print('The dataset did not have {}.'.format(input_word))
 		choices = self.pronounce(input_word, (trimmed_lexical_database, trimmed_substring_database), False)
+		if verbose and not found:
+			print('Here\'s what pba came up with anyway: {}'.format(choices))
+		elif verbose and found:
+			print('pba\'s guess: {}'.format(choices))
+
 		return choices, (answer in choices)
 
 	def pronounce(self, input_word, trimmed_databases=None, verbose=False):
@@ -422,13 +429,13 @@ class PronouncerByAnalogy:
 			print('Done.')
 			print('{} nodes and {} arcs.'.format(len(pl.nodes), len(pl.arcs)))
 		candidates = pl.find_all_paths()
-		best = pl.decide(candidates)
+		best = pl.decide(candidates, verbose=True)
 		if verbose and best is not None:
 			print('Best: {}'.format([str(item) for item in best]))
 		return best
 
 import time
 pba = PronouncerByAnalogy()
-#pba.pronounce('autoperambulatorification')
+#pba.pronounce('autoperambulatorification', verbose=True)
 #pba.pronounce('iota')
-pba.cross_validate(1000)
+pba.cross_validate_pronounce('attempt', verbose=True)
