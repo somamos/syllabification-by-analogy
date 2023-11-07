@@ -45,6 +45,8 @@ class PronouncerByAnalogy:
 				return not self.__eq__(other)
 			def __str__(self):
 				return '[{}:{}]'.format(self.intermediate_phonemes, self.count)
+			def __hash__(self):
+				return hash((self.from_node, self.intermediate_phonemes, self.to_node))
 			# Accepts a list of nodes.
 			# Returns whether this arc's endpoints exist within that list.
 			def contains(self, list_of_nodes):
@@ -92,7 +94,8 @@ class PronouncerByAnalogy:
 				
 			def __str__(self):
 				return '{}: length {}, score {}'.format(''.join(self.pronunciation), self.length, self.arc_count_product)
-
+			def __hash__(self):
+				return hash(tuple([arc for arc in self.arcs]))
 			# Append arc to this candidate with its nodes and heuristics.
 			def update(self, parent, arc):
 				# Update path and path string.
@@ -232,8 +235,6 @@ class PronouncerByAnalogy:
 				# Merge all other candidates' symbols into a set.
 				other_candidates_symbols = set(''.join([c.pronunciation for j, c in enumerate(candidates) if j != i]))
 				for ch in pronunciation:
-					if ch not in other_candidates_symbols:
-						print('{} was not found'.format(ch))
 					number_of_different_symbols += 1 if ch not in other_candidates_symbols else 0
 				candidates[i].number_of_different_symbols = number_of_different_symbols
 				#print('{} different symbols in {} versus {}'.format(number_of_different_symbols, candidates[i], other_candidates_symbols))
@@ -241,6 +242,84 @@ class PronouncerByAnalogy:
 				candidates[i].weakest_link = min([arc.count for arc in candidates[i].arcs if not arc.contains([self.START_NODE, self.END_NODE])])
 
 			#print(['{}: {}'.format(arc.from_node.matched_letter + arc.intermediate_phonemes + arc.to_node.matched_letter, arc.count) for arc in self.arcs])
+
+		# Ranks candidates by the five heuristics. 
+		def rank_by_heuristics(self, candidates):
+			import itertools
+			# Ranked by maximum product of the arc frequencies.
+			results_PC = self.rank_by_heuristic(candidates, 'arc_count_product')
+			# Ranked by minimum standard deviation of the arc lengths.
+			results_SDAL = self.rank_by_heuristic(candidates, 'arc_lengths_standard_deviation', descending=False)
+			# Ranked by maximum frequency of the same pronunciation.
+			results_FSP = self.rank_by_heuristic(candidates, 'frequency_of_same_pronunciation')
+			# Ranked by minimum number of different symbols.
+			results_NDS = self.rank_by_heuristic(candidates, 'number_of_different_symbols', descending=False)
+			# Ranked by maximum weak link value, (weak link = minimum of the arc frequencies).
+			results_WL = self.rank_by_heuristic(candidates, 'weakest_link')
+
+			results = (results_PC, results_SDAL, results_FSP, results_NDS, results_WL)
+
+			strategy_to_result = {}
+			# Rank fusion.
+			# There are 31 ways to choose which metrics to include in one's evaluation.
+			# 00001, 00011, 00101, ..., 10111, 01111, 11111
+			ways = list(itertools.product([False, True], repeat=5))
+			# Permute through every way of scoring.
+			for way in ways:
+				# Ignore the all-false option.
+				if not any(way):
+					continue
+
+				strategy = ''
+				# Flush dict for this current way of scoring.
+				totals = {}
+				# Each bit maps onto a results column to include.
+				for i, bit in enumerate(way):
+					if not bit:
+						strategy += '0'
+						continue
+					# This column of results should contribute to the total for each candidate.
+					strategy += '1'
+					column = results[i]
+					for candidate in candidates:
+						# Multiply ranks.
+						totals[candidate] = totals.get(candidate, 1) * column[candidate]
+				# Now that every column has been added, save the minimum.
+				best = min(totals, key=totals.get)
+				best_val = totals[best]
+				#print(strategy)
+				#print('{}: {}'.format(best.pronunciation, best_val))
+				strategy_to_result[strategy] = best
+
+			return strategy_to_result
+
+
+
+		# The best rank is 1. Then 2, then 3, and so on.
+		# Multiple candidates can share the same rank, naturally.
+		def rank_by_heuristic(self, candidates, attribute, descending=True, verbose=False):
+			from operator import attrgetter
+			candidates.sort(key=attrgetter(attribute), reverse=descending)
+			# Map candidates to how well they did (lower is better.)
+			candidate_to_rank_map = {}
+			# Sort candidates by attribute.
+			prev = getattr(candidates[0], attribute)
+			rank = 1
+			# Every time the attribute changes, we increment the score.
+			for candidate in candidates:
+				curr = getattr(candidate, attribute)
+				if prev != curr:
+					# The next tier has been reached.
+					rank += 1
+				candidate_to_rank_map[candidate] = rank
+				prev = curr
+			if verbose:
+				print('Ranked candidates by {}. Results:\n'.format(attribute))
+				for key in candidate_to_rank_map.keys():
+					print('#{}: {} ({})'.format(candidate_to_rank_map[key], key.pronunciation, getattr(key, attribute)))
+			return candidate_to_rank_map
+
+
 		def decide(self, candidates, verbose=False):
 			from operator import attrgetter
 			# I will explain this very clearly for my future self.
@@ -261,7 +340,6 @@ class PronouncerByAnalogy:
 					func_string = 'max'
 				else:
 					print('Warning. Function {} has not been tested and cannot be guaranteed to work'.format(func))
-
 				# Find min or max attribute among a list of candidates.
 				candidate = func(list_, key=attrgetter(attribute))
 				attr_val = getattr(candidate, attribute)
@@ -282,53 +360,20 @@ class PronouncerByAnalogy:
 			#min_lengths = list(filter(lambda x: x.length == min_length, candidates))
 			min_lengths = func_by_attribute(candidates, 'length', min)
 
-			self.compute_heuristics(min_lengths)
-
-			if verbose:
-				print('1. MAXIMUM ARC COUNT PRODUCT:')
-				min_lengths.sort(key=attrgetter('arc_count_product'))
-				for candidate in min_lengths:
-					print('{}: {}'.format(candidate.pronunciation, candidate.arc_count_product))
-				print('2. MINIMUM STANDARD DEVIATION OF ARC LENGTHS:')
-				min_lengths.sort(key=attrgetter('arc_lengths_standard_deviation'), reverse=True)
-				for candidate in min_lengths:
-					print('{}: {}'.format(candidate.pronunciation, candidate.arc_lengths_standard_deviation))
-				print('3. MAXIMUM FREQUENCY OF SAME PRONUNCIATION:')
-				min_lengths.sort(key=attrgetter('frequency_of_same_pronunciation'))
-				for candidate in min_lengths:
-					print('{}: {}'.format(candidate.pronunciation, candidate.frequency_of_same_pronunciation))
-				print('4. MINIMUM NUMBER OF DIFFERENT SYMBOLS:')
-				min_lengths.sort(key=attrgetter('number_of_different_symbols'), reverse=True)
-				for candidate in min_lengths:
-					print('{}: {}'.format(candidate.pronunciation, candidate.number_of_different_symbols))
-				print('5. MAXIMUM WEAK LINK')
-				min_lengths.sort(key=attrgetter('weakest_link'))
-				for candidate in min_lengths:
-					print('{}: {}'.format(''.join(['{}({})'.format(arc.from_node.phoneme + \
-						arc.intermediate_phonemes + arc.to_node.phoneme, arc.count) for arc in \
-					candidate.arcs]), candidate.weakest_link))
-
 			if len(min_lengths) == 1:
 				# Convert to strings.
-				min_lengths = [choice.pronunciation for choice in min_lengths]
-				return min_lengths
+				return {'min_length': min_lengths[0]}
 
+			self.compute_heuristics(min_lengths)
+			results = self.rank_by_heuristics(min_lengths)
+
+			# Choose the 0th of each of the following, just because rank_by_heuristics can't break ties either.
 			# Supposedly superior selection method.
-			max_sum_of_products = func_by_attribute(min_lengths, 'sum_of_products', max)
+			results['sum_of_products'] = func_by_attribute(min_lengths, 'sum_of_products', max)[0]
 			# Old selection method.
-			max_scores = func_by_attribute(min_lengths, 'arc_count_sum', max)
+			results['arc_count_sum'] = func_by_attribute(min_lengths, 'arc_count_sum', max)[0]
 
-			# Compare old and new method
-			if max_scores != max_sum_of_products:
-				print('OLD METHOD: {}'.format([item.pronunciation for item in max_scores]))
-				print('NEW METHOD: {}'.format([item.pronunciation for item in max_sum_of_products]))
-
-			if len(max_scores) > 1:
-				print('There was a tie between {} scores.'.format(len(max_scores)))
-
-			# Convert to strings.
-			max_sum_of_products = [choice.pronunciation for choice in max_sum_of_products]
-			return max_sum_of_products
+			return results
 
 		def print(self):
 			self.find_all_paths(True)
@@ -419,43 +464,71 @@ class PronouncerByAnalogy:
 			self.unrepresented_bigrams = unrepresented_bigrams
 
 	def cross_validate(self, start=0):
+		from datetime import datetime
+		now = datetime.today().strftime('%Y-%m-%d-%H-%M-%S')
 		prev_time = time.time()
-		correct_count = 0
-		incorrect_count = 0
-		no_paths_found = 0
 		total = 0
 		trial = start
 		trial_count = len(self.lexical_database) - 1
 		trial_word = ''
 		ground_truth = ''
-		while trial < trial_count:
-			partial_database = {}
-			i = 0
-			skipped = False
-			
-			keys = list(self.lexical_database.keys())
+		# Map the strategy name to the titular stat.
+		words_correct = {}
+		words_total = {}
+		phonemes_correct = {}
+		phonemes_total = {}
+		with open('Data/Results_{}.txt'.format(now), 'w', encoding='latin-1') as f:
+			while trial < trial_count:
+				output = ''
+				i = 0
+				skipped = False
+				
+				keys = list(self.lexical_database.keys())
 
-			# Skip short words.
-			if len(keys[trial]) <= 2:
-				skipped = True
-				print('Skipping {} because it\'s too short.'.format(keys[trial]))
+				# Skip short words.
+				if len(keys[trial]) <= 4: # We're skipping 2-letter words, it's just they're padded with # on both ends.
+					skipped = True
+					print('Skipping {} because it\'s too short.'.format(keys[trial]))
+					trial += 1
+					continue
+
+				trial_word = keys[trial]
+				ground_truth = self.lexical_database[trial_word]
+				print('Loading trial #{}: {} ({})...'.format(trial, trial_word, ground_truth))
+				results = self.cross_validate_pronounce(trial_word)
+				for key in results:
+					method = key
+					phoneme_correct = 0
+					total_phonemes = 0
+					# Iterate words for which this trial had a result.
+					words_total[key] = words_total.get(key, 0) + 1
+					# Evaluate that result.
+					if results[key].pronunciation == ground_truth:
+						words_correct[key] = words_correct.get(key, 0) + 1
+					# Iterate phonemes for which this trial had a result.
+					for index, ch in enumerate(results[key].pronunciation):
+						# Total always iterates.
+						phonemes_total[key] = phonemes_total.get(key, 0) + 1
+						if index < len(ground_truth) and ch == ground_truth[index]:
+							# Correct only when correct.
+							phonemes_correct[key] = phonemes_correct.get(key, 0) + 1
+				output += 'TRIAL {}, {}\n'.format(trial, trial_word)
+				for key in results:
+					output += '{}, {}, {}, {}, {}\n'.format(key, words_correct.get(key, 0), words_total.get(key, 0), \
+						phonemes_correct.get(key, 0), phonemes_total.get(key, 0))
+					print('{}: {}, {}. {}/{} words correct ({:.2f}%), {}/{} phonemes correct ({:.2f}%)'.format(key, results[key].pronunciation, results[key].pronunciation == ground_truth, words_correct.get(key, 0), words_total.get(key, 0), \
+						100*words_correct.get(key, 0)/words_total.get(key, 1), phonemes_correct.get(key, 0), phonemes_total.get(key, 0), 100*phonemes_correct.get(key, 0)/phonemes_total.get(key, 0)))
+				output += '\n'
+				f.write(output)
+
 				trial += 1
-				continue
+				total += 1
+				#print('{} / {} ({}%) Correct'.format(correct_count, total, 100*correct_count/total))
 
-			trial_word = keys[trial]
-			print('Loading trial #{}: {}...'.format(trial, trial_word))
-			ground_truth = self.lexical_database[trial_word]
-			best, correct = self.cross_validate_pronounce(trial_word)
-			incorrect_count += 1 if (not correct) else 0
-			correct_count += 1 if correct else 0
-			trial += 1
-			total += 1
-			print('{} / {} ({}%) Correct'.format(correct_count, total, 100*correct_count/total))
-
-			print('Guess: {}\nGround truth: {}'.format(best, ground_truth))
-			#print('{} vs. {}'.format(ground_truth, best[0]))
-			prev_time = time.time()
-			print()
+				#print('Guess: {}\nGround truth: {}'.format(best, ground_truth))
+				#print('{} vs. {}'.format(ground_truth, best[0]))
+				prev_time = time.time()
+				print()
 
 	def __init__(self, path="Preprocessing/Out/output.txt"):
 		print('Loading lexical database...')
@@ -494,15 +567,9 @@ class PronouncerByAnalogy:
 					print('Removed {} ({}) from dataset.'.format(input_word, answer))
 		if not found:
 			print('The dataset did not have {}.'.format(input_word))
-		choices = self.pronounce(input_word, (trimmed_lexical_database, trimmed_substring_database), False)
-		if verbose and not found:
-			print('Here\'s what pba came up with anyway: {}'.format(choices))
-		elif verbose and found:
-			print('pba\'s guess: {}'.format(choices))
+		results = self.pronounce(input_word, (trimmed_lexical_database, trimmed_substring_database), False)
 
-		if choices:
-			return choices, (answer in choices)
-		return choices, False
+		return results
 
 	def pronounce(self, input_word, trimmed_databases=None, verbose=False):
 		# Default to the database loaded in the constructor.
@@ -642,15 +709,15 @@ class PronouncerByAnalogy:
 			print('Done.')
 			print('{} nodes and {} arcs.'.format(len(pl.nodes), len(pl.arcs)))
 		candidates = pl.find_all_paths()
-		best = pl.decide(candidates, True)
-		if verbose and best is not None:
-			print('Best: {}'.format([str(item) for item in best]))
-		return best
+		results = pl.decide(candidates)
+		#if verbose and best is not None:
+		#	print('Best: {}'.format([str(item) for item in best]))
+		return results
 
 import time
 pba = PronouncerByAnalogy()
 #pba.pronounce('autoperambulatorification', verbose=True)
 #pba.pronounce('ineptitude', verbose=True)
 #pba.cross_validate_pronounce('ineptitude', verbose=True)
-pba.cross_validate_pronounce('magnet', verbose=True)
-#pba.cross_validate(25000)
+#pba.cross_validate_pronounce('mandatory', verbose=True)
+pba.cross_validate()

@@ -19,7 +19,7 @@ This work is leading up to a Python implementation of the Syllabification by Ana
     - [X] Rewrite description of "suppression above the diagonal."
 4. pba.py
     - [ ] Refactor to prepare for syllabification (generalize Lattice).
-    - [ ] Implement the 5 scoring systems described by Marchand & Damper.
+    - [X] Implement the 5 scoring systems described by Marchand & Damper.
     - [X] Fix "silence problem" (flag bigrams unrepresented in the dataset).
     - [ ] Add sba (split encodings by syllable).
 
