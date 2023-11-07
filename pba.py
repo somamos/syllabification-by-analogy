@@ -238,7 +238,7 @@ class PronouncerByAnalogy:
 				candidates[i].number_of_different_symbols = number_of_different_symbols
 				#print('{} different symbols in {} versus {}'.format(number_of_different_symbols, candidates[i], other_candidates_symbols))
 				# 5. Maximum weakest link. (The weakest link is the minimum arc count)
-				candidates[i].weakest_link = min([arc.count for arc in candidates[i].arcs])
+				candidates[i].weakest_link = min([arc.count for arc in candidates[i].arcs if not arc.contains([self.START_NODE, self.END_NODE])])
 
 			#print(['{}: {}'.format(arc.from_node.matched_letter + arc.intermediate_phonemes + arc.to_node.matched_letter, arc.count) for arc in self.arcs])
 		def decide(self, candidates, verbose=False):
@@ -304,7 +304,9 @@ class PronouncerByAnalogy:
 				print('5. MAXIMUM WEAK LINK')
 				min_lengths.sort(key=attrgetter('weakest_link'))
 				for candidate in min_lengths:
-					print('{}: {}'.format(candidate.pronunciation, candidate.weakest_link))
+					print('{}: {}'.format(''.join(['{}({})'.format(arc.from_node.phoneme + \
+						arc.intermediate_phonemes + arc.to_node.phoneme, arc.count) for arc in \
+					candidate.arcs]), candidate.weakest_link))
 
 			if len(min_lengths) == 1:
 				# Convert to strings.
@@ -569,6 +571,7 @@ class PronouncerByAnalogy:
 		#        malignant  ->  malignant
 		def populate_precalculated():
 			def add_entry(substr_index_tuple, bigger_w, length_diff):
+				import re
 				substr, i = substr_index_tuple
 				indices_in_bigger = [m.start() for m in re.finditer('(?={})'.format(substr), bigger_w)]
 				# Add to the lattice.
@@ -586,7 +589,6 @@ class PronouncerByAnalogy:
 			# tor,
 			# tori,
 			# these substrings won't get double counted.
-			import re
 			nonlocal input_precalculated_substrings
 			nonlocal input_word
 			nonlocal entry_word
@@ -612,7 +614,6 @@ class PronouncerByAnalogy:
 			prev_matching_substring = NO_MATCH
 			for i, row in enumerate(smaller_words_substrings):
 				for j, substring in enumerate(row):
-
 					if substring not in bigger_word:
 						# Ignore when NEVER had a match.
 						if prev_matching_substring == NO_MATCH:
@@ -621,7 +622,7 @@ class PronouncerByAnalogy:
 						#print('{} is being added!'.format(prev_matching_substring))
 						add_entry(prev_matching_substring, bigger_word, length_difference)
 						# Flush the buffer so we know, upon loop end, whether the last remaining prev_match
-						# has been accounted for or not. (Imagine a scenario where the very last checked substring
+						# has been accounted for. (Imagine a scenario where the very last checked substring
 						# happens to perfectly match. In such cases, the "substring not in bigger_word" branch
 						# would never run. Therefore, we must check for prev_match after the loop as well.)
 						prev_matching_substring = NO_MATCH
@@ -649,6 +650,7 @@ class PronouncerByAnalogy:
 import time
 pba = PronouncerByAnalogy()
 #pba.pronounce('autoperambulatorification', verbose=True)
-#pba.pronounce('evidence')
-pba.cross_validate_pronounce('independent', verbose=True)
+#pba.pronounce('ineptitude', verbose=True)
+#pba.cross_validate_pronounce('ineptitude', verbose=True)
+pba.cross_validate_pronounce('magnet', verbose=True)
 #pba.cross_validate(25000)
