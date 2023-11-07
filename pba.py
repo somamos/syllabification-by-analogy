@@ -45,6 +45,10 @@ class PronouncerByAnalogy:
 				return not self.__eq__(other)
 			def __str__(self):
 				return '[{}:{}]'.format(self.intermediate_phonemes, self.count)
+			# Accepts a list of nodes.
+			# Returns whether this arc's endpoints exist within that list.
+			def contains(self, list_of_nodes):
+				return (self.from_node in list_of_nodes) or (self.to_node in list_of_nodes)				
 
 		class Candidate:
 			# Initialize candidate as empty or as shallow copy.
@@ -63,6 +67,9 @@ class PronouncerByAnalogy:
 					self.sum_of_products = 0
 					self.frequency_of_same_pronunciation = 1 # There's at least one with this pronunciation -- itself.
 					self.length = 0
+					self.arc_lengths_standard_deviation = 0
+					self.weakest_link = 0
+					self.number_of_different_symbols = 0
 					return
 				# Init as shallow copy.
 				# Path and path string.
@@ -76,32 +83,36 @@ class PronouncerByAnalogy:
 				self.arc_count_product = other.arc_count_product
 				self.sum_of_products = other.sum_of_products
 				self.frequency_of_same_pronunciation = other.frequency_of_same_pronunciation
+				self.arc_lengths_standard_deviation = other.arc_lengths_standard_deviation
+				self.weakest_link = other.weakest_link
+				self.number_of_different_symbols = 0
 			# Finalizes path_strings (only run this when a path is complete.)
 			def solidify(self):
 				self.pronunciation = ''.join(self.path_strings)
-
+				
 			def __str__(self):
-				return '{}: length {}, score {}'.format(''.join(self.pronunciation), self.length, self.score)
+				return '{}: length {}, score {}'.format(''.join(self.pronunciation), self.length, self.arc_count_product)
 
 			# Append arc to this candidate with its nodes and heuristics.
-			def update(self, arc):
+			def update(self, parent, arc):
 				# Update path and path string.
 				self.path += [arc.from_node, arc]
 				self.arcs += [arc]
 				self.path_strings += [arc.from_node.phoneme, arc.intermediate_phonemes]
 				# Update heuristics.
-				self.arc_count_sum += arc.count
-				self.arc_count_product *= arc.count
+				# Ignore start node and end node's counts. Those arcs would only count how many times a word starts with
+				# the word's start letter and ends with the word's end letter.
+				self.arc_count_sum += arc.count if not arc.contains([parent.START_NODE, parent.END_NODE]) else 0
 				self.length += 1
 				# If it's the start, we don't need the first node, which merely represents the start node.
 				if len(self.arcs) == 1:
 					self.path = self.path[1:]
 					self.path_strings = self.path_strings[1:]
 
-			def pop(self):
+			def pop(self, parent):
 				# Decrement from heuristics.
-				self.arc_count_sum -= self.arcs[-1].count
-				self.arc_count_product /= self.arcs[-1].count
+				removed = self.arcs[-1]
+				self.arc_count_sum -= removed.count if not removed.contains([parent.START_NODE, parent.END_NODE]) else 0
 				self.length -= 1
 				# Pop from path and path string.
 				self.arcs = self.arcs[:-1]
@@ -115,10 +126,10 @@ class PronouncerByAnalogy:
 			self.nodes = {}
 			self.arcs = {}
 
-			self.start = self.Node('#', '$', -1)
-			self.end = self.Node('#', '$', len(letters))
-			self.nodes[hash(('#', '$', -1))] = self.start
-			self.nodes[hash(('#', '$', len(letters)))] = self.start
+			self.START_NODE = self.Node('', '', -1)
+			self.END_NODE = self.Node('', '', len(letters))
+			self.nodes[hash(('', '', -1))] = self.START_NODE
+			self.nodes[hash(('', '', len(letters)))] = self.END_NODE
 
 			self.unrepresented_bigrams = set()
 		# String interpretation of pronunciation lattice (unlinked. use print() for all linked pronunciations.)
@@ -140,7 +151,7 @@ class PronouncerByAnalogy:
 			for node in self.nodes:
 				print('Node {} has {} arcs into it and {} arcs out of it.'.format(node.matched_letter + node.phoneme + str(node.index), len(node.from_arcs), len(node.to_arcs)))
 		# Lists all paths via breadth-first search.
-		def find_all_paths(self, print_progress = False):
+		def find_all_paths(self, verbose = False):
 			import sys
 			min_length = sys.maxsize
 			
@@ -153,59 +164,83 @@ class PronouncerByAnalogy:
 				nonlocal min_length
 				u.visited = True
 				if u == d:
-					if print_progress:
-						print(candidate_buffer)
 					complete_candidate = self.Candidate(candidate_buffer)
 					complete_candidate.solidify()
 					candidates.append(complete_candidate) # Append a copy.
+					if verbose:
+						print(complete_candidate.pronunciation, complete_candidate.arc_count_product)
 					if candidate_buffer.length < min_length:
 						min_length = candidate_buffer.length
 				elif candidate_buffer.length < min_length:
 					for arc in u.to_arcs:
 						v = arc.to_node
-						candidate_buffer.update(arc) # Append arc to buffer with its nodes and heuristics. 
+						candidate_buffer.update(self, arc) # Append arc to buffer with its nodes and heuristics. 
 						if v.visited == False:
 							util(v, d, candidate_buffer) # Recur over successor node.
-						candidate_buffer.pop() # Wipe candidate buffer.
+						candidate_buffer.pop(self) # Wipe candidate buffer.
 				u.visited = False # Allow future revisiting.
 			# Set visited to False for all.
 			for node in self.nodes.values():
 				node.visited = False
 			candidate_buffer = self.Candidate()
 			# Begin breadth-first search listing all paths.
-			util(self.start, self.end, candidate_buffer)
+			util(self.START_NODE, self.END_NODE, candidate_buffer)
 			if len(candidates) == 0:
 				print('Warning. No paths were found.')
 			return candidates
 
-		# Merge by identical pronunciations generating
+		# Count identical pronunciations generating
 		# 1) "the maximum frequency of the same pronunciation (FSP) within the shortest paths," and
 		# 2) "the sum of products over...multiple paths [of] identical pronunciations"
-		def merge_by_pronunciation(self, candidate_list):
-			unique_candidate_list = []
-			# Keep a dict of pronunciations and their indices within the new, UNIQUE list of candidates.
-			pronunciation_to_index_map = {}
+		def get_frequencies_by_pronunciation(self, candidate_list):
+			# Map unique pronunciations to the number of times that pronunciation occurs.
+			pronunciation_to_repeat_count = {}
+			# Map unique pronunciations to the sum of (products of each occurrence's arcs).
+			pronunciation_to_sum_of_product = {}
 			for i, candidate in enumerate(candidate_list):
-				# Has this pronunciation been found before?
-				previous_occurrence = pronunciation_to_index_map.get(candidate.pronunciation, -1)
-				# First occurrence.
-				if previous_occurrence == -1:
-					# Account for its own product within the sum_of_products.
-					candidate.sum_of_products += candidate.arc_count_product
-					# Append reference.
-					unique_candidate_list.append(candidate)
-					# Map this pronunciation to the index that accesses the unique reference with that pronunciation.
-					pronunciation_to_index_map[candidate.pronunciation] = len(unique_candidate_list) - 1
+				# Iterate frequency.
+				pronunciation_to_repeat_count[candidate.pronunciation] = pronunciation_to_repeat_count.get(candidate.pronunciation, 0) + 1
+				# Add sum of products.
+				pronunciation_to_sum_of_product[candidate.pronunciation] = \
+					pronunciation_to_sum_of_product.get(candidate.pronunciation, 0) + candidate.arc_count_product
+			return pronunciation_to_repeat_count, pronunciation_to_sum_of_product
 
-					continue
-				# Has been found before. Merge.
-				index_of_prev_occurrence = pronunciation_to_index_map[candidate.pronunciation]
-				# Update the original's sum_of_products. 
-				unique_candidate_list[index_of_prev_occurrence].sum_of_products += candidate.arc_count_product
-				# Iterate frequency of same pronunciation.
-				unique_candidate_list[index_of_prev_occurrence].frequency_of_same_pronunciation += 1
-			return unique_candidate_list
+		# These help break ties. See page 9 of "Can syllabification improve pronunciation by analogy of English?"
+		def compute_heuristics(self, candidates):
+			import math
+			import statistics
+			from operator import attrgetter
+			# 1. Maximum arc count product
+			for i in range(len(candidates)):
+				candidates[i].arc_count_product = math.prod([arc.count for arc in candidates[i].arcs])
 
+			pronunciation_to_repeat_count, pronunciation_to_sum_of_product = self.get_frequencies_by_pronunciation(candidates)
+
+			other_candidates_symbols = ''
+			for i in range(len(candidates)):
+				pronunciation = candidates[i].pronunciation
+				# 2. Minimum standard deviation.
+				candidates[i].arc_lengths_standard_deviation = statistics.stdev([len(arc.intermediate_phonemes) for arc in candidates[i].arcs])
+				#print('{}: {}'.format([arc.intermediate_phonemes for arc in self.arcs], self.arc_lengths_standard_deviation))
+
+				# 3. Maximum frequency of the same pronunciation 
+				candidates[i].frequency_of_same_pronunciation = pronunciation_to_repeat_count[pronunciation]
+				# (We'll also do sum of products here, too, even though it's not one of M&D's 5.)
+				candidates[i].sum_of_products = pronunciation_to_sum_of_product[pronunciation]
+				# 4. Minimum number of different symbols per candidate.
+				number_of_different_symbols = 0
+				# Merge all other candidates' symbols into a set.
+				other_candidates_symbols = set(''.join([c.pronunciation for j, c in enumerate(candidates) if j != i]))
+				for ch in pronunciation:
+					if ch not in other_candidates_symbols:
+						print('{} was not found'.format(ch))
+					number_of_different_symbols += 1 if ch not in other_candidates_symbols else 0
+				candidates[i].number_of_different_symbols = number_of_different_symbols
+				#print('{} different symbols in {} versus {}'.format(number_of_different_symbols, candidates[i], other_candidates_symbols))
+				# 5. Maximum weakest link. (The weakest link is the minimum arc count)
+				candidates[i].weakest_link = min([arc.count for arc in candidates[i].arcs])
+
+			#print(['{}: {}'.format(arc.from_node.matched_letter + arc.intermediate_phonemes + arc.to_node.matched_letter, arc.count) for arc in self.arcs])
 		def decide(self, candidates, verbose=False):
 			from operator import attrgetter
 			# I will explain this very clearly for my future self.
@@ -247,16 +282,39 @@ class PronouncerByAnalogy:
 			#min_lengths = list(filter(lambda x: x.length == min_length, candidates))
 			min_lengths = func_by_attribute(candidates, 'length', min)
 
+			self.compute_heuristics(min_lengths)
+
+			if verbose:
+				print('1. MAXIMUM ARC COUNT PRODUCT:')
+				min_lengths.sort(key=attrgetter('arc_count_product'))
+				for candidate in min_lengths:
+					print('{}: {}'.format(candidate.pronunciation, candidate.arc_count_product))
+				print('2. MINIMUM STANDARD DEVIATION OF ARC LENGTHS:')
+				min_lengths.sort(key=attrgetter('arc_lengths_standard_deviation'), reverse=True)
+				for candidate in min_lengths:
+					print('{}: {}'.format(candidate.pronunciation, candidate.arc_lengths_standard_deviation))
+				print('3. MAXIMUM FREQUENCY OF SAME PRONUNCIATION:')
+				min_lengths.sort(key=attrgetter('frequency_of_same_pronunciation'))
+				for candidate in min_lengths:
+					print('{}: {}'.format(candidate.pronunciation, candidate.frequency_of_same_pronunciation))
+				print('4. MINIMUM NUMBER OF DIFFERENT SYMBOLS:')
+				min_lengths.sort(key=attrgetter('number_of_different_symbols'), reverse=True)
+				for candidate in min_lengths:
+					print('{}: {}'.format(candidate.pronunciation, candidate.number_of_different_symbols))
+				print('5. MAXIMUM WEAK LINK')
+				min_lengths.sort(key=attrgetter('weakest_link'))
+				for candidate in min_lengths:
+					print('{}: {}'.format(candidate.pronunciation, candidate.weakest_link))
+
 			if len(min_lengths) == 1:
 				# Convert to strings.
 				min_lengths = [choice.pronunciation for choice in min_lengths]
 				return min_lengths
 
-			unique_candidates = self.merge_by_pronunciation(min_lengths)
 			# Supposedly superior selection method.
-			max_sum_of_products = func_by_attribute(unique_candidates, 'sum_of_products', max)
+			max_sum_of_products = func_by_attribute(min_lengths, 'sum_of_products', max)
 			# Old selection method.
-			max_scores = func_by_attribute(unique_candidates, 'arc_count_sum', max)
+			max_scores = func_by_attribute(min_lengths, 'arc_count_sum', max)
 
 			# Compare old and new method
 			if max_scores != max_sum_of_products:
@@ -277,8 +335,8 @@ class PronouncerByAnalogy:
 			def create_or_iterate_arc(inter, a, b):
 				new = self.Arc(inter, a, b)
 				found = self.arcs.get(hash((inter, a, b)), None)
-				if found is not None:
-					found.count += 1
+				if found is not None: # Do not iterate start nodes. The only count the number of words that start and end with
+					found.count += 1 if not found.contains([self.START_NODE, self.END_NODE]) else 0 # this word's first and end letter.
 					return found
 				self.arcs[hash((inter, a, b))] = new # Not found. Add new one.
 				found2 = self.arcs.get(hash((inter, a, b)), None)
@@ -303,9 +361,9 @@ class PronouncerByAnalogy:
 			arc = create_or_iterate_arc(sub_phones[1:-1], a, b)
 			# Handle beginning and ending nodes.
 			if start_index == 0:
-				start_arc = create_or_iterate_arc('', self.start, a)
+				start_arc = create_or_iterate_arc('', self.START_NODE, a)
 			elif start_index + len(sub_letters) == len(self.letters):
-				end_arc = create_or_iterate_arc('', b, self.end)
+				end_arc = create_or_iterate_arc('', b, self.END_NODE)
 
 		# Adds nodes between gaps in paths to solve the "silence problem."
 		def link_unrepresented(self):
@@ -583,7 +641,7 @@ class PronouncerByAnalogy:
 			print('Done.')
 			print('{} nodes and {} arcs.'.format(len(pl.nodes), len(pl.arcs)))
 		candidates = pl.find_all_paths()
-		best = pl.decide(candidates)
+		best = pl.decide(candidates, True)
 		if verbose and best is not None:
 			print('Best: {}'.format([str(item) for item in best]))
 		return best
@@ -591,6 +649,6 @@ class PronouncerByAnalogy:
 import time
 pba = PronouncerByAnalogy()
 #pba.pronounce('autoperambulatorification', verbose=True)
-#pba.pronounce('iota')
-#pba.cross_validate_pronounce('keyboard', verbose=True)
-pba.cross_validate(25000)
+#pba.pronounce('evidence')
+pba.cross_validate_pronounce('independent', verbose=True)
+#pba.cross_validate(25000)
