@@ -16,7 +16,7 @@ This work is leading up to a Python implementation of the Syllabification by Ana
 3. pba.py
     - [ ] Refactor to prepare for syllabification (generalize Lattice).
     - [X] Implement the 5 scoring systems described by Marchand & Damper.
-    - [ ] Figure out why most of the scoring strategies are performing worse than naive sum.
+    - [ ] Fix the scoring systems to match those described by [this version(!)](https://github.com/somamos/syllabification-by-analogy/files/13280320/089120100561674.pdf) of the paper.
     - [X] Fix "silence problem" (flag bigrams unrepresented in the dataset).
     - [ ] Add sba (split encodings by syllable).
 
@@ -37,3 +37,4 @@ Data-driven "by analogy" techniques require an aligned dataset. In this case, ev
 ## pba.py
 
 Given an input word, pronunciation by analogy searches for matching substrings in a so-called "lexical database" (a list of words mapped to their phonemes), patching the substrings together into a "lattice" to form a list of candidate pronunciations. The candidate pronunciations are then scored.
+
