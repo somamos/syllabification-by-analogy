@@ -164,6 +164,8 @@ class PronouncerByAnalogy:
 			# Filter out the candidates by that length.
 			min_lengths = list(filter(lambda x: x.length == min_length, candidates))
 			if len(min_lengths) == 1:
+				# Convert to strings.
+				min_lengths = [''.join(choice.path_strings) for choice in min_lengths]
 				return min_lengths
 
 			# Find the maximum score among the candidates with the minimum length
@@ -172,6 +174,9 @@ class PronouncerByAnalogy:
 			max_scores = list(filter(lambda x: x.score == max_score, min_lengths))
 			if len(max_scores) > 1:
 				print('There was a tie between {} scores.'.format(len(max_scores)))
+
+			# Convert to strings.
+			max_scores = [''.join(choice.path_strings) for choice in max_scores]
 			return max_scores
 
 		def print(self):
@@ -211,10 +216,10 @@ class PronouncerByAnalogy:
 			elif start_index + len(sub_letters) == len(self.letters):
 				end_arc = create_or_iterate_arc('', b, self.end)
 
-	def cross_validate(self, path="Preprocessing/Out/output.txt", start = 0):
+	def cross_validate(self, start=0):
 		prev_time = time.time()
-		correct = 0
-		incorrect = 0
+		correct_count = 0
+		incorrect_count = 0
 		no_paths_found = 0
 		total = 0
 		trial = start
@@ -226,41 +231,27 @@ class PronouncerByAnalogy:
 			i = 0
 			print('Loading trial #{}...'.format(trial))
 			skipped = False
-			for i, line in enumerate(self.lexical_database.keys()):
-				if trial == i:
-					if len(line) <= 2:
-						print('Skipping trial. Word "{}" not long enough.'.format(line))
-						skipped = True
-						break
-					# Remove one word from entries.
-					trial_word = line
-					print('Word to pronounce: {}'.format(trial_word))
-					ground_truth = self.lexical_database[line]
-					#continue
-				partial_database[line] = self.lexical_database[line]
-			if skipped:
+			
+			keys = list(self.lexical_database.keys())
+
+			# Skip short words.
+			if len(keys[trial]) <= 2:
+				skipped = True
+				print('Skipping {} because it\'s too short.'.format(keys[trial]))
 				trial += 1
 				continue
-			best = self.pronounce(trial_word)
-			if best is not None:
-				outputs = [''.join(candidate.path_strings) for candidate in best]
-				print('Attempt(s): {}'.format(outputs))
-				if ground_truth in outputs:
-					correct += 1
-				else:
-					incorrect += 1
-			else:
-				print('Attempt: No paths found.')
-				no_paths_found += 1
-			print('Ground truth: {}'.format(ground_truth))
 
-			print('Time to load: {}'.format(time.time() - prev_time))
-			total = correct + incorrect + no_paths_found
-			print('{} / {} ({}%) Correct'.format(correct, total, 100*correct/total))
-
-			#print('{} vs. {}'.format(ground_truth, best[0]))
+			trial_word = keys[trial]
+			ground_truth = self.lexical_database[trial_word]
+			best, correct = self.cross_validate_pronounce(trial_word, verbose=True)
+			incorrect_count += 1 if (not correct) else 0
+			correct_count += 1 if correct else 0
 			trial += 1
 			total += 1
+			print('{} / {} ({}%) Correct'.format(correct_count, total, 100*correct_count/total))
+
+			print('Guess: {}\nGround truth: {}'.format(best, ground_truth))
+			#print('{} vs. {}'.format(ground_truth, best[0]))
 			prev_time = time.time()
 			print()
 
@@ -276,8 +267,37 @@ class PronouncerByAnalogy:
 				self.substring_database[line[0]] = [[line[0][i:j] for j in range(i, len(line[0]) + 1) \
 					if j - i > 1] for i in range(0, len(line[0]) + 1)]
 
-	def pronounce(self, input_word):
-		print('Building pronunciation lattice for "{}"...'.format(input_word))
+	# Removes input word from the dataset before pronouncing if present.
+	def cross_validate_pronounce(self, input_word, verbose=False):
+		trimmed_lexical_database = {}
+		trimmed_substring_database = {}
+
+		found = False
+		for word in self.lexical_database.keys():
+			if word != input_word:
+				trimmed_lexical_database[word] = self.lexical_database[word]
+				trimmed_substring_database[word] = self.substring_database[word]
+			else:
+				found = True
+				answer = self.lexical_database[word]
+				if verbose:
+					print('Removed {} from dataset.'.format(input_word))
+		if not found:
+			print('The dataset did not have {}.'.format(input_word))
+		choices = self.pronounce(input_word, (trimmed_lexical_database, trimmed_substring_database), False)
+		return choices, (answer in choices)
+
+	def pronounce(self, input_word, trimmed_databases=None, verbose=False):
+		# Default to the database loaded in the constructor.
+		lexical_database = self.lexical_database
+		substring_database = self.substring_database
+
+		# Refer to pruned versions when called by cross_validate_pronounce.
+		if trimmed_databases != None:
+			lexical_database = trimmed_databases[0]
+			substring_database = trimmed_databases[1]
+		if verbose:
+			print('Building pronunciation lattice for "{}"...'.format(input_word))
 		# Construct lattice.
 		pl = self.PronunciationLattice(input_word)
 		# Second fastest.
@@ -338,17 +358,9 @@ class PronouncerByAnalogy:
 					if length_diff <= 0:
 						# The smaller word's starting index, then, is i, because of how input_precalculated_substrings are organized.
 						# Locate the indices in the entry word out of which to slice the phonemes.
-						if DEBUG:
-							print('Entry word bigger:')
-							print('{}, {}, {}, {}, {}'.format(input_word, entry_word, substr, phonemes[bigger_index : bigger_index + len(substr)], i))
-							print('{}[{} : {} + {}]'.format(phonemes, bigger_index, bigger_index, len(substr)))
 						pl.add(substr, phonemes[bigger_index : bigger_index + len(substr)], i)
 					# Input word is the bigger word.
 					else:
-						if DEBUG:
-							print('Input word bigger:')
-							print('{}, {}, {}, {}, {}'.format(input_word, entry_word, substr, phonemes[i : i + len(substr)], bigger_index))
-							print('{}[{} : {} + {}]'.format(phonemes, i, i, len(substr)))
 						pl.add(substr, phonemes[i : i + len(substr)], bigger_index)
 			# TODO: Only match upon a break. That way,
 			# to,
@@ -366,7 +378,7 @@ class PronouncerByAnalogy:
 				smaller_words_substrings = input_precalculated_substrings
 				bigger_word = entry_word
 			else:
-				smaller_words_substrings = self.substring_database[entry_word]
+				smaller_words_substrings = substring_database[entry_word]
 				bigger_word = input_word
 
 			NO_MATCH = ('', -1)
@@ -402,16 +414,16 @@ class PronouncerByAnalogy:
 						#print('{} will be added later...'.format(prev_matching_substring))
 				if prev_matching_substring != NO_MATCH:
 					add_entry(prev_matching_substring, bigger_word, length_difference)
-		for entry_word in self.lexical_database:
-			phonemes = self.lexical_database[entry_word]
+		for entry_word in lexical_database:
+			phonemes = lexical_database[entry_word]
 			populate_precalculated()
 			#populate_legacy()
-
-		print('Done.')
-		print('{} nodes and {} arcs.'.format(len(pl.nodes), len(pl.arcs)))
+		if verbose:
+			print('Done.')
+			print('{} nodes and {} arcs.'.format(len(pl.nodes), len(pl.arcs)))
 		candidates = pl.find_all_paths()
 		best = pl.decide(candidates)
-		if best is not None:
+		if verbose and best is not None:
 			print('Best: {}'.format([str(item) for item in best]))
 		return best
 
@@ -419,4 +431,4 @@ import time
 pba = PronouncerByAnalogy()
 #pba.pronounce('autoperambulatorification')
 #pba.pronounce('iota')
-pba.cross_validate(start=10000)
+pba.cross_validate(1000)

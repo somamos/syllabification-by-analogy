@@ -3,7 +3,7 @@ The repository currently consists of
 
 1. Preprocessing to merge common words between a pronunciation wordlist and a syllabified wordlist,
 2. Marchand & Damper's text-phoneme alignment algorithm, and
-3. Dedina & Nusbaum's pronunciation by analogy method (with tweaks by M&D) that here achieves ~85-90% success rate.
+3. Dedina & Nusbaum's pronunciation by analogy method (with tweaks by M&D).
 
 This work is leading up to a Python implementation of the Syllabification by Analogy (SbA) algorithm described by Marchand & Damper in _Can syllabification improve pronunciation by analogy of English?_ which you can read [here](https://github.com/somamos/syllabification-by-analogy/files/13186641/Damper.Marchand.s.Can.syllabification.improve.pronunciation.by.analogy.of.English.pdf).
 
@@ -13,7 +13,7 @@ This work is leading up to a Python implementation of the Syllabification by Ana
 2. preprocess.py
     - [X] Gauge encodings without nuclei post-alignment.
     - [X] Scrutinize outliers during syllable encoding.
-    - [ ] Decide between inferring nucleus locations before or after alignment. Is it smart to anchor nuclei so naively based on such simple rules? Or should we instead let alignment do its thing and determine the nucleus per syllable post-alignment (ditching mappings of multiple aligned nuclei per database-b-encoded syllable?)
+    - [ ] Decide between inferring nucleus locations before or after alignment. Is it smart to anchor nuclei so naively based on such simple rules? Or should we instead let alignment do its thing and determine the nucleus per syllable post-alignment (ditching mappings of multiple aligned nuclei per dataset-b-encoded syllable?)
 3. align.py
     - [X] Prioritize encodings' nucleus locations during alignment (list of index tuples?).
     - [X] Rewrite description of "suppression above the diagonal."
@@ -39,4 +39,4 @@ Data-driven "by analogy" techniques require an aligned dataset. In this case, ev
 
 ## pba.py
 
-Given an input word, pronunciation by analogy searches for matching substrings in a so-called "lexical database" (a list of words mapped to their phonemes), patching the substrings together into a "lattice" to form a list of candidate pronunciations. The candidate pronunciations are then scored. Even this early version is achieving an ~85-90% success rate (out of a mere couple hundred words of informal cross validation).
+Given an input word, pronunciation by analogy searches for matching substrings in a so-called "lexical database" (a list of words mapped to their phonemes), patching the substrings together into a "lattice" to form a list of candidate pronunciations. The candidate pronunciations are then scored.
