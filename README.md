@@ -15,7 +15,6 @@ This work is leading up to a Python implementation of the Syllabification by Ana
     - [X] Scrutinize outliers during syllable encoding.
     - [ ] Decide between inferring nucleus locations before or after alignment. Is it smart to anchor nuclei so naively based on such simple rules? Or should we instead let alignment do its thing and determine the nucleus per syllable post-alignment (ditching mappings of multiple aligned nuclei per database-b-encoded syllable?)
 3. align.py
-    - [ ] Refactor to remove side effects.
     - [X] Prioritize encodings' nucleus locations during alignment (list of index tuples?).
     - [X] Rewrite description of "suppression above the diagonal."
 4. pba.py

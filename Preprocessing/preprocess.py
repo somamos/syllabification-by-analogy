@@ -370,9 +370,9 @@ def preprocess():
 
 	# See "Aligning Text and Phonemes for Speech Technology Applications Using an EM-Like Algorithm"
 	from align import Aligner
-	# TODO: remove side effects and make this properly functional.
-	aligner = Aligner(all_letters, all_phonemes, final, vowel_letters, nuclei)
-
+	aligner = Aligner()
+	# This modifies words in the final wordlist in-place. 
+	aligner.align(final)
 	# Finally, print the dataset.
 	out = []
 	errors = []

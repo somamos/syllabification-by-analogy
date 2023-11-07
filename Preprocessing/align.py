@@ -103,18 +103,15 @@ class Aligner:
 				s += '\n'
 			return s
 
-
 	# Letters will map to row indices -- Phonemes, column indices -- of a
 	# so-called association matrix. Each cell stores the likelihood of a given letter-to-phoneme pairing.
-	def __init__(self, alphabet, phonemes, wordlist, vowel_letters = 'aeiouy', vowel_sounds = 'aAc@^WiIoOEReUuYx', scale = 40, test_words = ['auction', 'articulated', 'thanked', 'watched'], *args):
+	def align(self, wordlist, scale = 40, test_words = ['auction', 'articulated', 'thanked', 'watched'], *args):		
 		import math
 		# We stop iterating when curr_score stops changing.
 		curr_score = 0
 		# Add characters to represent the borders of words.
 		self.LETTER_PAD = '#'
 		self.PHONEME_PAD = '$'
-		alphabet.append(self.LETTER_PAD)
-		phonemes.append(self.PHONEME_PAD)
 		# Using a dict for the "association matrix" might be more efficient.
 		A_curr = {}
 
@@ -144,7 +141,7 @@ class Aligner:
 		# Print A^0.
 		#print(A_curr)
 
-		# Begin alignment.
+		# Iterate alignment.
 		# Populates new and improved association matrix A_n.
 		# given B, a matrix of pairings' likelihoods (determined by previous iteration's association matrix).
 		# A_n is weighted by D's diagonal entries which describe the optimal path from the bottom right
@@ -299,24 +296,5 @@ class Aligner:
 			word.letters = word.letters[1:-1]
 			word.phonemes = word.phonemes[1:-1]
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+	def __init__(self):
+		pass
