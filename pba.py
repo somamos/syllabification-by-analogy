@@ -53,8 +53,15 @@ class PronouncerByAnalogy:
 				if other == None:
 					self.path = [] # Includes all nodes.
 					self.arcs = [] # Arcs only.
-					self.path_strings = [] # String representation of candidate pronunciation.
-					self.score = 0
+					# path_strings need to remain fluid during the breadth-first search, because 
+					# to "pop" an arc involves the removal of any number of intermediate phonemes.
+					self.path_strings = []
+					# path_strings get merged into pronunciation after path is completed.
+					self.pronunciation = ''
+					self.arc_count_sum = 0
+					self.arc_count_product = 1
+					self.sum_of_products = 0
+					self.frequency_of_same_pronunciation = 1 # There's at least one with this pronunciation -- itself.
 					self.length = 0
 					return
 				# Init as shallow copy.
@@ -62,12 +69,19 @@ class PronouncerByAnalogy:
 				self.path = other.path[:]
 				self.arcs = other.arcs[:]
 				self.path_strings = other.path_strings[:]
+				self.pronunciation = other.pronunciation
 				# Heuristics.
 				self.length = other.length
-				self.score = other.score
+				self.arc_count_sum = other.arc_count_sum
+				self.arc_count_product = other.arc_count_product
+				self.sum_of_products = other.sum_of_products
+				self.frequency_of_same_pronunciation = other.frequency_of_same_pronunciation
+			# Finalizes path_strings (only run this when a path is complete.)
+			def solidify(self):
+				self.pronunciation = ''.join(self.path_strings)
 
 			def __str__(self):
-				return '{}: length {}, score {}'.format(''.join(self.path_strings), self.length, self.score)
+				return '{}: length {}, score {}'.format(''.join(self.pronunciation), self.length, self.score)
 
 			# Append arc to this candidate with its nodes and heuristics.
 			def update(self, arc):
@@ -76,7 +90,8 @@ class PronouncerByAnalogy:
 				self.arcs += [arc]
 				self.path_strings += [arc.from_node.phoneme, arc.intermediate_phonemes]
 				# Update heuristics.
-				self.score += arc.count
+				self.arc_count_sum += arc.count
+				self.arc_count_product *= arc.count
 				self.length += 1
 				# If it's the start, we don't need the first node, which merely represents the start node.
 				if len(self.arcs) == 1:
@@ -85,7 +100,8 @@ class PronouncerByAnalogy:
 
 			def pop(self):
 				# Decrement from heuristics.
-				self.score -= self.arcs[-1].count
+				self.arc_count_sum -= self.arcs[-1].count
+				self.arc_count_product /= self.arcs[-1].count
 				self.length -= 1
 				# Pop from path and path string.
 				self.arcs = self.arcs[:-1]
@@ -139,8 +155,11 @@ class PronouncerByAnalogy:
 				if u == d:
 					if print_progress:
 						print(candidate_buffer)
-					candidates.append(self.Candidate(candidate_buffer)) # Append a shallow copy.
-					min_length = candidate_buffer.length
+					complete_candidate = self.Candidate(candidate_buffer)
+					complete_candidate.solidify()
+					candidates.append(complete_candidate) # Append a copy.
+					if candidate_buffer.length < min_length:
+						min_length = candidate_buffer.length
 				elif candidate_buffer.length < min_length:
 					for arc in u.to_arcs:
 						v = arc.to_node
@@ -159,32 +178,97 @@ class PronouncerByAnalogy:
 				print('Warning. No paths were found.')
 			return candidates
 
+		# Merge by identical pronunciations generating
+		# 1) "the maximum frequency of the same pronunciation (FSP) within the shortest paths," and
+		# 2) "the sum of products over...multiple paths [of] identical pronunciations"
+		def merge_by_pronunciation(self, candidate_list):
+			unique_candidate_list = []
+			# Keep a dict of pronunciations and their indices within the new, UNIQUE list of candidates.
+			pronunciation_to_index_map = {}
+			for i, candidate in enumerate(candidate_list):
+				# Has this pronunciation been found before?
+				previous_occurrence = pronunciation_to_index_map.get(candidate.pronunciation, -1)
+				# First occurrence.
+				if previous_occurrence == -1:
+					# Account for its own product within the sum_of_products.
+					candidate.sum_of_products += candidate.arc_count_product
+					# Append reference.
+					unique_candidate_list.append(candidate)
+					# Map this pronunciation to the index that accesses the unique reference with that pronunciation.
+					pronunciation_to_index_map[candidate.pronunciation] = len(unique_candidate_list) - 1
+
+					continue
+				# Has been found before. Merge.
+				index_of_prev_occurrence = pronunciation_to_index_map[candidate.pronunciation]
+				# Update the original's sum_of_products. 
+				unique_candidate_list[index_of_prev_occurrence].sum_of_products += candidate.arc_count_product
+				# Iterate frequency of same pronunciation.
+				unique_candidate_list[index_of_prev_occurrence].frequency_of_same_pronunciation += 1
+			return unique_candidate_list
+
 		def decide(self, candidates, verbose=False):
+			from operator import attrgetter
+			# I will explain this very clearly for my future self.
+			# PART 1:
+			# - func is a function, either min() or max().
+			# - func expects a list of objects and some attribute of that object
+			#   by which to sort the list. 
+			# - It returns only one candidate (again, either min or max attribute).
+			# PART 2:
+			# - But what if there are ties for min or max?
+			# - The second part filters the list by the min or max attribute.
+			# - The entire function, func_by_attribute, returns the list of ties, if applicable.
+			def func_by_attribute(list_, attribute, func):
+				func_string = ''
+				if func == min:
+					func_string = 'min'
+				elif func == max:
+					func_string = 'max'
+				else:
+					print('Warning. Function {} has not been tested and cannot be guaranteed to work'.format(func))
+
+				# Find min or max attribute among a list of candidates.
+				candidate = func(list_, key=attrgetter(attribute))
+				attr_val = getattr(candidate, attribute)
+				# Filter the candidates by that attribute value.
+				filtered_list = list(filter(lambda x: getattr(x, attribute) == attr_val, list_))
+				if verbose:
+					print('{a} {b}: {c}.\n Candidates of {a} {b}: {d}'.format(a=func_string, b=attribute, c=attr_val, \
+						d=[choice.pronunciation for choice in filtered_list]))
+				return filtered_list
+
 			if len(candidates) == 0:
 				print('Candidates list is empty.')
 				return
-			from operator import attrgetter
+			
 			# Find the minimum length among the candidates
-			min_length = min(candidates, key=attrgetter('length')).length
+			#min_length = min(candidates, key=attrgetter('length')).length
 			# Filter out the candidates by that length.
-			min_lengths = list(filter(lambda x: x.length == min_length, candidates))
-			if verbose:
-				print('Minimum length: {}\n Candidates of minimum length: {}'.format(min_length, [''.join(choice.path_strings) for choice in min_lengths]))
+			#min_lengths = list(filter(lambda x: x.length == min_length, candidates))
+			min_lengths = func_by_attribute(candidates, 'length', min)
+
 			if len(min_lengths) == 1:
 				# Convert to strings.
-				min_lengths = [''.join(choice.path_strings) for choice in min_lengths]
+				min_lengths = [choice.pronunciation for choice in min_lengths]
 				return min_lengths
 
-			# Find the maximum score among the candidates with the minimum length
-			max_score = max(min_lengths, key=attrgetter('score')).score
-			# Filter out the candidates by that score.
-			max_scores = list(filter(lambda x: x.score == max_score, min_lengths))
+			unique_candidates = self.merge_by_pronunciation(min_lengths)
+			# Supposedly superior selection method.
+			max_sum_of_products = func_by_attribute(unique_candidates, 'sum_of_products', max)
+			# Old selection method.
+			max_scores = func_by_attribute(unique_candidates, 'arc_count_sum', max)
+
+			# Compare old and new method
+			if max_scores != max_sum_of_products:
+				print('OLD METHOD: {}'.format([item.pronunciation for item in max_scores]))
+				print('NEW METHOD: {}'.format([item.pronunciation for item in max_sum_of_products]))
+
 			if len(max_scores) > 1:
 				print('There was a tie between {} scores.'.format(len(max_scores)))
 
 			# Convert to strings.
-			max_scores = [''.join(choice.path_strings) for choice in max_scores]
-			return max_scores
+			max_sum_of_products = [choice.pronunciation for choice in max_sum_of_products]
+			return max_sum_of_products
 
 		def print(self):
 			self.find_all_paths(True)
@@ -287,7 +371,6 @@ class PronouncerByAnalogy:
 		while trial < trial_count:
 			partial_database = {}
 			i = 0
-			print('Loading trial #{}...'.format(trial))
 			skipped = False
 			
 			keys = list(self.lexical_database.keys())
@@ -300,8 +383,9 @@ class PronouncerByAnalogy:
 				continue
 
 			trial_word = keys[trial]
+			print('Loading trial #{}: {}...'.format(trial, trial_word))
 			ground_truth = self.lexical_database[trial_word]
-			best, correct = self.cross_validate_pronounce(trial_word, verbose=True)
+			best, correct = self.cross_validate_pronounce(trial_word)
 			incorrect_count += 1 if (not correct) else 0
 			correct_count += 1 if correct else 0
 			trial += 1
@@ -499,7 +583,7 @@ class PronouncerByAnalogy:
 			print('Done.')
 			print('{} nodes and {} arcs.'.format(len(pl.nodes), len(pl.arcs)))
 		candidates = pl.find_all_paths()
-		best = pl.decide(candidates, verbose=True)
+		best = pl.decide(candidates)
 		if verbose and best is not None:
 			print('Best: {}'.format([str(item) for item in best]))
 		return best
@@ -508,7 +592,5 @@ import time
 pba = PronouncerByAnalogy()
 #pba.pronounce('autoperambulatorification', verbose=True)
 #pba.pronounce('iota')
-pba.cross_validate_pronounce('cartqwhack', verbose=True)
-pba.cross_validate_pronounce('appleqzfood', verbose=True)
-pba.cross_validate_pronounce('bananaqzxbanana', verbose=True)
-#pba.cross_validate()
+#pba.cross_validate_pronounce('keyboard', verbose=True)
+pba.cross_validate(25000)
