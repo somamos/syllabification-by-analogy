@@ -8,18 +8,15 @@ The repository currently consists of
 This work is leading up to a Python implementation of the Syllabification by Analogy (SbA) algorithm described by Marchand & Damper in _Can syllabification improve pronunciation by analogy of English?_ which you can read [here](https://github.com/somamos/syllabification-by-analogy/files/13186641/Damper.Marchand.s.Can.syllabification.improve.pronunciation.by.analogy.of.English.pdf).
 
 ## todo:
-1. readme.md
-    - [X] Update readme
-2. preprocess.py
-    - [X] Gauge encodings without nuclei post-alignment.
-    - [X] Scrutinize outliers during syllable encoding.
+1. preprocess.py
     - [ ] Decide between inferring nucleus locations before or after alignment. Is it smart to anchor nuclei so naively based on such simple rules? Or should we instead let alignment do its thing and determine the nucleus per syllable post-alignment (ditching mappings of multiple aligned nuclei per dataset-b-encoded syllable?)
-3. align.py
+2. align.py
     - [X] Prioritize encodings' nucleus locations during alignment (list of index tuples?).
     - [X] Rewrite description of "suppression above the diagonal."
-4. pba.py
+3. pba.py
     - [ ] Refactor to prepare for syllabification (generalize Lattice).
     - [X] Implement the 5 scoring systems described by Marchand & Damper.
+    - [ ] Figure out why most of the scoring strategies are performing worse than naive sum.
     - [X] Fix "silence problem" (flag bigrams unrepresented in the dataset).
     - [ ] Add sba (split encodings by syllable).
 
