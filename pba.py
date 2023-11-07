@@ -92,8 +92,6 @@ class PronouncerByAnalogy:
 				self.path = self.path[:-2] # path and path_strings had [node, arc, node], three references to remove.
 				self.path_strings = self.path_strings[:-2]
 
-
-
 		# Initialize pronunciation lattice.
 		def __init__(self, letters):
 			self.letters = letters
@@ -105,6 +103,8 @@ class PronouncerByAnalogy:
 			self.end = self.Node('#', '$', len(letters))
 			self.nodes[hash(('#', '$', -1))] = self.start
 			self.nodes[hash(('#', '$', len(letters)))] = self.start
+
+			self.unrepresented_bigrams = set()
 		# String interpretation of pronunciation lattice (unlinked. use print() for all linked pronunciations.)
 		def __str__(self):
 			s = ''
@@ -127,6 +127,11 @@ class PronouncerByAnalogy:
 		def find_all_paths(self, print_progress = False):
 			import sys
 			min_length = sys.maxsize
+			
+			# Link unrepresented bigrams.
+			# fixes the silence problem.
+			self.link_unrepresented()
+
 			candidates = []
 			def util(u, d, candidate_buffer):
 				nonlocal min_length
@@ -218,6 +223,57 @@ class PronouncerByAnalogy:
 			elif start_index + len(sub_letters) == len(self.letters):
 				end_arc = create_or_iterate_arc('', b, self.end)
 
+		# Adds nodes between gaps in paths to solve the "silence problem."
+		def link_unrepresented(self):
+			if not len(self.unrepresented_bigrams):
+				return
+			for item in self.unrepresented_bigrams:
+				start_index = item[0]
+				end_index = start_index + 1
+				bigram = item[1]
+				start_char = bigram[0]
+				end_char = bigram[1]
+				#print('{}: {} at {}, {} at {}'.format(self.letters, start_char, start_index, end_char, end_index))
+				# Nodes ending at start_index
+				nodes_at_start_index = [node for node in self.nodes.values() if node.index == start_index]
+				# Nodes starting at end_index
+				nodes_at_end_index = [node for node in self.nodes.values() if node.index == end_index]
+				# Because we're iterating from left onward, we know nodes_at_start_index must be populated.
+				if not len(nodes_at_start_index):
+					# This will only be a problem if the input has not been sanitized.
+					print('No nodes started with {}.'.format(start_char))
+					exit()
+				# Nodes at end index, however, cannot be guaranteed to exist.
+				if not len(nodes_at_end_index):
+					nodes_at_end_index.append(self.Node(end_char, '-', end_index))
+
+				# Now link all nodes at start to nodes at end through new arcs.
+				for start_node in nodes_at_start_index:
+					for end_node in nodes_at_end_index:
+						self.add(start_node.matched_letter + end_node.matched_letter, \
+							start_node.phoneme + end_node.phoneme, start_index)
+
+		# Solves the "silence problem" as documented by M&D in
+		# "Can syllabification improve pronunciation by analogy of English?"
+		# The silence problem occurs when a letter pair in the input word
+		# does not exist in the dataset.
+		def flag_unrepresented_bigrams(self, input_word, database):
+			represented_bigrams = set()
+			keys = list(database.keys())
+			# For each word.
+			for word in keys:
+				# For each bigram.
+				for index in range (0, len(word) - 2):
+					bigram = word[index] + word[index + 1]
+					represented_bigrams.add(bigram)
+			unrepresented_bigrams = []
+			for x in range(0, len(input_word) - 2):
+				bigram = input_word[x] + input_word[x + 1]
+				if bigram not in represented_bigrams:
+					unrepresented_bigrams.append((x, bigram))
+
+			self.unrepresented_bigrams = unrepresented_bigrams
+
 	def cross_validate(self, start=0):
 		prev_time = time.time()
 		correct_count = 0
@@ -300,7 +356,9 @@ class PronouncerByAnalogy:
 		elif verbose and found:
 			print('pba\'s guess: {}'.format(choices))
 
-		return choices, (answer in choices)
+		if choices:
+			return choices, (answer in choices)
+		return choices, False
 
 	def pronounce(self, input_word, trimmed_databases=None, verbose=False):
 		# Default to the database loaded in the constructor.
@@ -315,6 +373,10 @@ class PronouncerByAnalogy:
 			print('Building pronunciation lattice for "{}"...'.format(input_word))
 		# Construct lattice.
 		pl = self.PronunciationLattice(input_word)
+
+		# Bigrams unrepresented in the dataset will cause gaps in lattice paths.
+		pl.flag_unrepresented_bigrams(input_word, lexical_database)
+
 		# Second fastest.
 		# The original method of Dedina and Nusbaum. Words begin left-aligned and end right-aligned.
 		def populate_legacy():
@@ -446,5 +508,7 @@ import time
 pba = PronouncerByAnalogy()
 #pba.pronounce('autoperambulatorification', verbose=True)
 #pba.pronounce('iota')
-pba.cross_validate_pronounce('canopy', verbose=True)
-#pba.cross_validate(1000)
+pba.cross_validate_pronounce('cartqwhack', verbose=True)
+pba.cross_validate_pronounce('appleqzfood', verbose=True)
+pba.cross_validate_pronounce('bananaqzxbanana', verbose=True)
+#pba.cross_validate()
