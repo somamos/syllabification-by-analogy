@@ -9,15 +9,21 @@ This work is leading up to a Python implementation of the Syllabification by Ana
 
 ## todo:
 1. preprocess.py
-    - [ ] Decide between inferring nucleus locations before or after alignment. Is it smart to anchor nuclei so naively based on such simple rules? Or should we instead let alignment do its thing and determine the nucleus per syllable post-alignment (ditching mappings of multiple aligned nuclei per dataset-b-encoded syllable?)
+    - [ ] Allow for outputs that do not mix datasets A and B.
+    - [ ] Allow for outputs from different sources.
+    - [ ] Test the premise that inferring nucleus locations pre-alignment improves results. Is it smart to anchor nuclei so naively based on such simple rules? Or should we instead let alignment do its thing and determine the nucleus per syllable post-alignment (ditching mappings of multiple aligned nuclei per dataset-b-encoded syllable?)
 2. align.py
     - [X] Prioritize encodings' nucleus locations during alignment (list of index tuples?).
     - [X] Rewrite description of "suppression above the diagonal."
+    - [ ] Improve alignment of pba's worst performers (see "Track the worst-performing..." below)
 3. pba.py
-    - [ ] Refactor to prepare for syllabification (generalize Lattice).
     - [X] Implement the 5 scoring systems described by Marchand & Damper.
     - [X] Fix the scoring systems to match those described by [this version(!)](https://github.com/somamos/syllabification-by-analogy/files/13280320/089120100561674.pdf) of the paper.
     - [X] Fix "silence problem" (flag bigrams unrepresented in the dataset).
+    - [ ] Write a convenient way to compare two datasets' results.
+    - [ ] Call off search at a certain number of candidate paths reached during bfs.
+    - [ ] Track the worst-performing input letters, output phonemes, and most challenging ground truth phonemes. 
+    - [ ] Refactor to prepare for syllabification (generalize Lattice).
     - [ ] Add sba (split encodings by syllable).
 
 # Overview
