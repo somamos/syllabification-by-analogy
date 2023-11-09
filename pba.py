@@ -246,18 +246,16 @@ class PronouncerByAnalogy:
 		# Ranks candidates by the five heuristics. 
 		def rank_by_heuristics(self, candidates):
 			import itertools
-			# Ranked by maximum product of the arc frequencies.
-			results_PC = self.rank_by_heuristic(candidates, 'arc_count_product')
-			# Ranked by minimum standard deviation of the arc lengths.
-			results_SDAL = self.rank_by_heuristic(candidates, 'arc_lengths_standard_deviation', descending=False)
-			# Ranked by maximum frequency of the same pronunciation.
-			results_FSP = self.rank_by_heuristic(candidates, 'frequency_of_same_pronunciation')
-			# Ranked by minimum number of different symbols.
-			results_NDS = self.rank_by_heuristic(candidates, 'number_of_different_symbols', descending=False)
-			# Ranked by maximum weak link value, (weak link = minimum of the arc frequencies).
-			results_WL = self.rank_by_heuristic(candidates, 'weakest_link')
+			# Rank according to these five heuristics and orders.
+			heuristic = ['arc_count_product', \
+				'arc_lengths_standard_deviation', \
+				'frequency_of_same_pronunciation', \
+				'number_of_different_symbols', \
+				'weakest_link']
+			descending = [True, False, True, False, True]
 
-			results = (results_PC, results_SDAL, results_FSP, results_NDS, results_WL)
+			results = tuple([self.rank_by_heuristic(candidates, heuristic[i], \
+				descending=descending[i], verbose=True) for i in range(len(heuristic))])
 
 			strategy_to_result = {}
 			# Rank fusion.
@@ -305,13 +303,17 @@ class PronouncerByAnalogy:
 			# Sort candidates by attribute.
 			prev = getattr(candidates[0], attribute)
 			rank = 1
+			# Ties within one rank should increase the gap between that rank and the next.
+			candidates_at_prev_rank = 0 	# i.e. 1st, 1st, 1st, 2nd, 3rd -> 1st, 1st, 1st, 4th, 5th
 			# Every time the attribute changes, we increment the score.
 			for candidate in candidates:
 				curr = getattr(candidate, attribute)
 				if prev != curr:
 					# The next tier has been reached.
-					rank += 1
+					rank += candidates_at_prev_rank
+					candidates_at_prev_rank = 0
 				candidate_to_rank_map[candidate] = rank
+				candidates_at_prev_rank += 1
 				prev = curr
 			if verbose:
 				print('Ranked candidates by {}. Results:\n'.format(attribute))
@@ -716,8 +718,7 @@ class PronouncerByAnalogy:
 
 import time
 pba = PronouncerByAnalogy()
-#pba.pronounce('autoperambulatorification', verbose=True)
-#pba.pronounce('ineptitude', verbose=True)
 #pba.cross_validate_pronounce('ineptitude', verbose=True)
-#pba.cross_validate_pronounce('mandatory', verbose=True)
-pba.cross_validate()
+pba.cross_validate_pronounce('mandatory', verbose=True)
+#pba.cross_validate_pronounce('synechdoche', verbose=True)
+#pba.cross_validate(1004)
