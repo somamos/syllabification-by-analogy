@@ -93,7 +93,7 @@ class PronouncerByAnalogy:
 				self.pronunciation = ''.join(self.path_strings)
 				
 			def __str__(self):
-				return '{}: length {}, score {}'.format(''.join(self.pronunciation), self.length, self.arc_count_product)
+				return self.pronunciation
 			def __hash__(self):
 				return hash(tuple([arc for arc in self.arcs]))
 			# Append arc to this candidate with its nodes and heuristics.
@@ -361,7 +361,10 @@ class PronouncerByAnalogy:
 					print('{}, rank {}, got {} points'.format(candidate.pronunciation, rank, points))
 				candidate_to_score_map[candidate] = points
 			return candidate_to_score_map
-
+		# Given a list of pronunciation candidates, returns a dict of string labels mapped to either:
+		# 1) the shortest path candidate, if a unique shortest path exists.
+		# 2) 31 candidates determined by every posisble fusion of 5 heuristics, 
+		#    as well as 2 candidates chosen by "simple" single-strategies.
 		def decide(self, candidates, verbose=False):
 			from operator import attrgetter
 			# I will explain this very clearly for my future self.
@@ -588,6 +591,7 @@ class PronouncerByAnalogy:
 					if j - i > 1] for i in range(0, len(line[0]) + 1)]
 
 	# Removes input word from the dataset before pronouncing if present.
+	# Returns 
 	def cross_validate_pronounce(self, input_word, verbose=False):
 		if not input_word.startswith('#'):
 			input_word = '#' + input_word
@@ -610,7 +614,8 @@ class PronouncerByAnalogy:
 		if not found:
 			print('The dataset did not have {}.'.format(input_word))
 		results = self.pronounce(input_word, (trimmed_lexical_database, trimmed_substring_database), False)
-
+		if verbose:
+			self.simple_print(results, answer)
 		return results
 
 	def pronounce(self, input_word, trimmed_databases=None, verbose=False):
@@ -747,16 +752,29 @@ class PronouncerByAnalogy:
 			phonemes = lexical_database[entry_word]
 			populate_precalculated()
 			#populate_legacy()
-		if verbose:
-			print('Done.')
-			print('{} nodes and {} arcs.'.format(len(pl.nodes), len(pl.arcs)))
+		#if verbose:
+		#	print('Done.')
+		#	print('{} nodes and {} arcs.'.format(len(pl.nodes), len(pl.arcs)))
 		candidates = pl.find_all_paths()
 		results = pl.decide(candidates)
 		return results
 
+	# Given a dict of string labels (describing a strategy) mapped to candidates
+	# arrived at via that strategy, print.
+	def simple_print(self, results, ground_truth=''):
+		if ground_truth == '':
+			for result in results:
+				print('{}: {}'.format(result, results[result]))
+			return
+		for result in results:
+			evaluation = 'CORRECT' if results[result].pronunciation == ground_truth else 'incorrect'
+			print('{}: {}, {}'.format(result, results[result], evaluation))
+		print('Ground truth: {}'.format(ground_truth))
+
+
 import time
 pba = PronouncerByAnalogy()
 #pba.cross_validate_pronounce('focus', verbose=True)
-pba.cross_validate_pronounce('mandatory', verbose=True)
-#pba.cross_validate_pronounce('synechdoche', verbose=True)
+#results = pba.cross_validate_pronounce('mandatory', verbose=True)
+pba.cross_validate_pronounce('synechdoche', verbose=True)
 #pba.cross_validate()
