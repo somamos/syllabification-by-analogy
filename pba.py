@@ -86,7 +86,7 @@ class PronouncerByAnalogy:
 				prev_time = time.time()
 				print()
 
-	def __init__(self, path="Preprocessing/Out/output.txt"):
+	def __init__(self, path="Preprocessing/Out/output.txt", verbose=True):
 		self.pl = None
 		print('Loading lexical database...')
 		# Assign Lexical Database.
@@ -100,7 +100,9 @@ class PronouncerByAnalogy:
 				line[1] = '${}$'.format(line[1])
 				self.lexical_database[line[0]] = line[1]
 				self.substring_database[line[0]] = [[line[0][i:j] for j in range(i, len(line[0]) + 1) \
-					if j - i > 1] for i in range(0, len(line[0]) + 1)]
+					if j - i > 1] for i in range(0, len(line[0]) - 1)]
+				if verbose:
+					print('{}\n{}\n{}\n\n'.format(line[0], line[1], self.substring_database[line[0]]))
 
 	# Removes input word from the dataset before pronouncing if present.
 	# Returns 
