@@ -2,10 +2,11 @@
 The repository currently consists of 
 
 1. Preprocessing to merge common words between a pronunciation wordlist and a syllabified wordlist,
-2. Marchand & Damper's text-phoneme alignment algorithm, and
-3. Dedina & Nusbaum's pronunciation by analogy method (with tweaks by M&D).
+2. Marchand & Damper's text-phoneme alignment algorithm,
+3. Dedina & Nusbaum's pronunciation by analogy method (with tweaks by M&D), and
+4. a preliminary implementation of Marchand & Damper's syllabification by analogy (SbA).
 
-This work is leading up to a Python implementation of the Syllabification by Analogy (SbA) algorithm described by Marchand & Damper in _Can syllabification improve pronunciation by analogy of English?_ which you can read [here](https://github.com/somamos/syllabification-by-analogy/files/13186641/Damper.Marchand.s.Can.syllabification.improve.pronunciation.by.analogy.of.English.pdf).
+Read more about their algorithm [here](https://github.com/somamos/syllabification-by-analogy/files/13186641/Damper.Marchand.s.Can.syllabification.improve.pronunciation.by.analogy.of.English.pdf).
 
 ## todo:
 1. preprocess.py
@@ -22,9 +23,11 @@ This work is leading up to a Python implementation of the Syllabification by Ana
     - [X] Fix "silence problem" (flag bigrams unrepresented in the dataset).
     - [X] Call off search at a certain number of candidate paths reached during bfs.
     - [X] Refactor to prepare for syllabification (generalize Lattice).
-    - [ ] Add sba (split encodings by syllable).
     - [ ] Write a convenient way to compare two datasets' results.
     - [ ] Track the worst-performing input letters, output phonemes, and most challenging ground truth phonemes. 
+4. sba.py
+    - [X] Add sba (split encodings by syllable).
+    - [ ] Evaluate sba results.
 
 # Overview
  
