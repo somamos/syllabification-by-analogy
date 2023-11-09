@@ -324,12 +324,12 @@ class PronouncerByAnalogy:
 		def rank_to_score(self, candidate_to_rank_map, heuristic, verbose=True):
 			candidate_to_score_map = {}
 			# Total points awarded: N(N + 1)/2 where N is the number of candidates.
-			# Hnadling ties:
+			# Handling ties:
 			# For a given range of tied candidates, we evenly distribute the number 
 			# of points that would have been awarded had there been no ties within that range.
-			# CANDIDATE RANK   	1 	2 	3 	3 	3 	6	7
-			# POINTS, NO TIES 	7 	6  [5 	4 	3]	2 	1
-			# POINTS WITH TIES  7 	6  [4 	4 	4] 	2 	1
+			# CANDIDATE RANK----1---2---3---3---3---6---7
+			# POINTS, NO TIES---7---6--[5---4---3]--2---1
+			# POINTS WITH TIES--7---6--[4---4---4]--2---1
 			points_awarded_to_first = len(candidate_to_rank_map) # Points awarded to first place if not tied.
 
 			rank_to_points_map = {}

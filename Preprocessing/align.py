@@ -6,9 +6,7 @@
 # - Gently discourage runaway matching, in which an early letter 
 #   wrongly pairs with a late phoneme.
 #   (ctrl+f: "Suppress above the diagonal")
-# - Uses "association dict" instead of "association matrix."
-#   About 60% performance boost (from ~5 seconds down to ~3 seconds per 10,000 words scored).
-# - Suppresses phoneme and vowel types that do not match.
+# - Anchors vowel sounds to probable nucleus locations.
 #   ctrl+f: "Tune the weights"
 
 class Aligner:
