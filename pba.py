@@ -2,11 +2,20 @@
 # Implements the method described by Dedina and Nusbaum (1991)’s Pronounce
 # as summarized by Marchand & Damper's "Can syllabification improve
 # pronunciation by analogy of English?
-global DEBUG
-DEBUG = False
+
+NO_PATHS_FOUND = 999
+SEARCHED_TOO_LONG = 998
+WORD_TOO_SHORT = 997
+ERRORS = { 
+999: 'NO_PATHS_FOUND', \
+998: 'SEARCHED_TOO_LONG', \
+997: 'WORD_TOO_SHORT' \
+}
+
 class PronouncerByAnalogy:
 	# A representation of possible pronunciations of a word.
 	class PronunciationLattice:
+
 		# Nodes are endpoints within the target word with a set location and candidate phoneme pronunciation.
 		class Node:
 			def __init__(self, matched_letter, phoneme, index):
@@ -163,16 +172,27 @@ class PronouncerByAnalogy:
 			# Link unrepresented bigrams.
 			# fixes the silence problem.
 			self.link_unrepresented()
-			# However, this is not sufficient. An extant bigram STILL
-			# may not have any paths that lead into it if the phonemes don't match.
+			# While helpful, this will not suffice. An extant bigram STILL
+			# may not have any paths that lead into it if phonemes don't match.
 			# We will keep track of furthest_index and attempt to manually dig further
 			# if no paths exist.
 			furthest_index = 0
 
 			candidates = []
+
+			overflow = False
+			util_call_count = 0
 			def util(u, d, candidate_buffer):
+				nonlocal overflow
 				nonlocal min_length
 				nonlocal furthest_index
+				nonlocal util_call_count
+				util_call_count += 1
+				if util_call_count%2500000 == 0:
+					print('Recursed {} times. {} candidates found.'.format(util_call_count, len(candidates)))
+				if util_call_count > 25000000:
+					overflow = True
+					return
 				u.visited = True
 				furthest_index = u.index if u.index > furthest_index else furthest_index
 				if u == d:
@@ -191,18 +211,25 @@ class PronouncerByAnalogy:
 							util(v, d, candidate_buffer) # Recur over successor node.
 						candidate_buffer.pop(self) # Wipe candidate buffer.
 				u.visited = False # Allow future revisiting.
-			while furthest_index < len(self.letters):
+			last_furthest_index = -1
+			while furthest_index < len(self.letters) and not overflow:
+				if furthest_index == last_furthest_index:
+					print('Progress has stopped.')
+					return NO_PATHS_FOUND
 				# Set visited to False for all.
 				for node in self.nodes.values():
 					node.visited = False
 				candidate_buffer = self.Candidate()
 				# Begin breadth-first search listing all paths.
 				util(self.START_NODE, self.END_NODE, candidate_buffer)
-				if len(candidates) == 0:
-					print('Warning. No paths were found. Furthest index: {}'.format(furthest_index))
-					# Patch every gap associated with the pair of letters beginning at that index.
-					self.link_silences(furthest_index)
-
+				if len(candidates) > 0:
+					continue
+				print('Warning. No paths were found. Furthest index: {}'.format(furthest_index))
+				# Patch every gap associated with the pair of letters beginning at that index.
+				self.link_silences(furthest_index)
+			if overflow:
+				print('Path threshold reached. Skipping.')
+				return SEARCHED_TOO_LONG
 			return candidates
 
 		# Count identical pronunciations generating
@@ -384,6 +411,7 @@ class PronouncerByAnalogy:
 		#    as well as 2 candidates chosen by "simple" single-strategies.
 		def decide(self, candidates, verbose=False):
 			from operator import attrgetter
+			from collections.abc import Iterable
 			# I will explain this very clearly for my future self.
 			# PART 1:
 			# - func is a function, either min() or max().
@@ -395,6 +423,7 @@ class PronouncerByAnalogy:
 			# - The second part filters the list by the min or max attribute.
 			# - The entire function, func_by_attribute, returns the list of ties, if applicable.
 			def func_by_attribute(list_, attribute, func):
+				from collections.abc import Iterable
 				func_string = ''
 				if func == min:
 					func_string = 'min'
@@ -411,10 +440,16 @@ class PronouncerByAnalogy:
 					print('{a} {b}: {c}.\n Candidates of {a} {b}: {d}'.format(a=func_string, b=attribute, c=attr_val, \
 						d=[choice.pronunciation for choice in filtered_list]))
 				return filtered_list
-
-			if len(candidates) == 0:
+			if candidates == None:
+				print('Candidates list is None.')
+				return
+			elif not isinstance(candidates, Iterable) and candidates in ERRORS:
+				print('Error reached.')
+				return candidates # This is an error code.
+			elif len(candidates) == 0:
 				print('Candidates list is empty.')
 				return
+
 			
 			# Find the minimum length among the candidates
 			#min_length = min(candidates, key=attrgetter('length')).length
@@ -560,6 +595,7 @@ class PronouncerByAnalogy:
 
 	def cross_validate(self, start=0):
 		from datetime import datetime
+		from collections.abc import Iterable
 		now = datetime.today().strftime('%Y-%m-%d-%H-%M-%S')
 		prev_time = time.time()
 		total = 0
@@ -573,6 +609,19 @@ class PronouncerByAnalogy:
 		phonemes_correct = {}
 		phonemes_total = {}
 		with open('Data/Results_{}.txt'.format(now), 'w', encoding='latin-1') as f:
+			def end_trial(output):
+				nonlocal trial
+				f.write(output)
+				trial += 1
+			# Iterate the occurrences of this error. Return the line to append to the file.
+			def count_error(code):
+				description = ERRORS[code]
+				self.simple_print(code)
+				# Log instance of error code.
+				words_total[description] = words_total.get(description, 0) + 1
+				# Print results.
+				return '{}, {}\n\n'.format(description, words_total.get(description, 0))
+
 			while trial < trial_count:
 				output = ''
 				i = 0
@@ -580,17 +629,27 @@ class PronouncerByAnalogy:
 				
 				keys = list(self.lexical_database.keys())
 
+				trial_word = keys[trial]
+				output += 'TRIAL {}, {}\n'.format(trial, trial_word)
+				ground_truth = self.lexical_database[trial_word]
+				print('Loading trial #{}: {} ({})...'.format(trial, trial_word, ground_truth))
+
 				# Skip short words.
 				if len(keys[trial]) <= 4: # We're skipping 2-letter words, it's just they're padded with # on both ends.
 					skipped = True
 					print('Skipping {} because it\'s too short.'.format(keys[trial]))
-					trial += 1
+					output += count_error(WORD_TOO_SHORT)
+					end_trial(output)
 					continue
 
-				trial_word = keys[trial]
-				ground_truth = self.lexical_database[trial_word]
-				print('Loading trial #{}: {} ({})...'.format(trial, trial_word, ground_truth))
 				results = self.cross_validate_pronounce(trial_word)
+				if not isinstance(results, Iterable):
+					# Print the error.
+					error_code = results
+					output += count_error(error_code)
+					end_trial(output)
+					continue
+
 				for key in results:
 					method = key
 					phoneme_correct = 0
@@ -607,16 +666,14 @@ class PronouncerByAnalogy:
 						if index < len(ground_truth) and ch == ground_truth[index]:
 							# Correct only when correct.
 							phonemes_correct[key] = phonemes_correct.get(key, 0) + 1
-				output += 'TRIAL {}, {}\n'.format(trial, trial_word)
 				for key in results:
 					output += '{}, {}, {}, {}, {}\n'.format(key, words_correct.get(key, 0), words_total.get(key, 0), \
 						phonemes_correct.get(key, 0), phonemes_total.get(key, 0))
 					print('{}: {}, {}. {}/{} words correct ({:.2f}%), {}/{} phonemes correct ({:.2f}%)'.format(key, results[key].pronunciation, results[key].pronunciation == ground_truth, words_correct.get(key, 0), words_total.get(key, 0), \
 						100*words_correct.get(key, 0)/words_total.get(key, 1), phonemes_correct.get(key, 0), phonemes_total.get(key, 0), 100*phonemes_correct.get(key, 0)/phonemes_total.get(key, 0)))
 				output += '\n'
-				f.write(output)
-
-				trial += 1
+				end_trial(output)
+				# Total only increments after a nonskipped trial.
 				total += 1
 				#print('{} / {} ({}%) Correct'.format(correct_count, total, 100*correct_count/total))
 
@@ -626,6 +683,7 @@ class PronouncerByAnalogy:
 				print()
 
 	def __init__(self, path="Preprocessing/Out/output.txt"):
+		self.pl = None
 		print('Loading lexical database...')
 		# Assign Lexical Database.
 		self.lexical_database = {}
@@ -680,10 +738,10 @@ class PronouncerByAnalogy:
 		if verbose:
 			print('Building pronunciation lattice for "{}"...'.format(input_word))
 		# Construct lattice.
-		pl = self.PronunciationLattice(input_word)
+		self.pl = self.PronunciationLattice(input_word)
 
 		# Bigrams unrepresented in the dataset will cause gaps in lattice paths.
-		pl.flag_unrepresented_bigrams(input_word, lexical_database)
+		self.pl.flag_unrepresented_bigrams(input_word, lexical_database)
 
 		# Second fastest.
 		# The original method of Dedina and Nusbaum. Words begin left-aligned and end right-aligned.
@@ -719,10 +777,10 @@ class PronouncerByAnalogy:
 							continue
 						if length_difference < 0:
 							# When the entry word is bigger, phoneme indices "shift right" to remain accurate.
-							pl.add(match, phonemes[index + offset : index + offset + length], index)
+							self.pl.add(match, phonemes[index + offset : index + offset + length], index)
 						else:
 							# When the entry word is smaller, matched indices "shift right" to remain accurate.
-							pl.add(match, phonemes[index : index + length], index + offset)
+							self.pl.add(match, phonemes[index : index + length], index + offset)
 		# Maps every possible substring greater than length 2 to their first index of occurrence
 		# in order, conveniently, from smallest to largest (per starting index).
 		input_precalculated_substrings = [[input_word[i:j] for j in range(i, len(input_word) + 1) if j - i > 1] for i in range(0, len(input_word) + 1)]
@@ -744,10 +802,10 @@ class PronouncerByAnalogy:
 					if length_diff <= 0:
 						# The smaller word's starting index, then, is i, because of how input_precalculated_substrings are organized.
 						# Locate the indices in the entry word out of which to slice the phonemes.
-						pl.add(substr, phonemes[bigger_index : bigger_index + len(substr)], i)
+						self.pl.add(substr, phonemes[bigger_index : bigger_index + len(substr)], i)
 					# Input word is the bigger word.
 					else:
-						pl.add(substr, phonemes[i : i + len(substr)], bigger_index)
+						self.pl.add(substr, phonemes[i : i + len(substr)], bigger_index)
 			# TODO: Only match upon a break. That way,
 			# to,
 			# tor,
@@ -802,16 +860,16 @@ class PronouncerByAnalogy:
 			phonemes = lexical_database[entry_word]
 			populate_precalculated()
 			#populate_legacy()
-		#if verbose:
-		#	print('Done.')
-		#	print('{} nodes and {} arcs.'.format(len(pl.nodes), len(pl.arcs)))
-		candidates = pl.find_all_paths()
-		results = pl.decide(candidates)
+		candidates = self.pl.find_all_paths()
+		results = self.pl.decide(candidates)
 		return results
 
 	# Given a dict of string labels (describing a strategy) mapped to candidates
 	# arrived at via that strategy, print.
 	def simple_print(self, results, ground_truth=''):
+		if results in ERRORS:
+			print('{}: {}'.format(results, ERRORS[results]))
+			return
 		if ground_truth == '':
 			for result in results:
 				print('{}: {}'.format(result, results[result]))
@@ -826,8 +884,8 @@ import time
 pba = PronouncerByAnalogy()
 #pba.cross_validate_pronounce('merit', verbose=True)
 #results = pba.cross_validate_pronounce('mandatory', verbose=True)
-pba.cross_validate_pronounce('albuquerque', verbose=True)
-pba.cross_validate_pronounce('uqauqauqauqauqauqa', verbose=True)
-#pba.cross_validate()
+#pba.cross_validate_pronounce('albuquerque', verbose=True)
+#pba.cross_validate_pronounce('uqauqauqauqauqauqa', verbose=True)
+pba.cross_validate(36645)
 
 

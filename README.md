@@ -21,7 +21,7 @@ This work is leading up to a Python implementation of the Syllabification by Ana
     - [X] Fix the scoring systems to match those described by [this version(!)](https://github.com/somamos/syllabification-by-analogy/files/13280320/089120100561674.pdf) of the paper.
     - [X] Fix "silence problem" (flag bigrams unrepresented in the dataset).
     - [ ] Write a convenient way to compare two datasets' results.
-    - [ ] Call off search at a certain number of candidate paths reached during bfs.
+    - [X] Call off search at a certain number of candidate paths reached during bfs.
     - [ ] Track the worst-performing input letters, output phonemes, and most challenging ground truth phonemes. 
     - [ ] Refactor to prepare for syllabification (generalize Lattice).
     - [ ] Add sba (split encodings by syllable).
