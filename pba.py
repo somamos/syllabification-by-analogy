@@ -35,6 +35,8 @@ class PronouncerByAnalogy:
 				self.intermediate_phonemes = intermediate_phonemes
 				self.to_node = to_node
 				self.count = 1
+				# Used to assemble what M&D call "path structure."
+				self.structure_component = (to_node.index - from_node.index)
 			def __eq__(self, other):
 				if not isinstance(other, type(self)):
 					return NotImplemented
@@ -69,7 +71,7 @@ class PronouncerByAnalogy:
 					self.sum_of_products = 0
 					self.frequency_of_same_pronunciation = 1 # There's at least one with this pronunciation -- itself.
 					self.length = 0
-					self.arc_lengths_standard_deviation = 0
+					self.path_structure_standard_deviation = 0
 					self.weakest_link = 0
 					self.number_of_different_symbols = 0
 					return
@@ -85,7 +87,7 @@ class PronouncerByAnalogy:
 				self.arc_count_product = other.arc_count_product
 				self.sum_of_products = other.sum_of_products
 				self.frequency_of_same_pronunciation = other.frequency_of_same_pronunciation
-				self.arc_lengths_standard_deviation = other.arc_lengths_standard_deviation
+				self.path_structure_standard_deviation = other.path_structure_standard_deviation
 				self.weakest_link = other.weakest_link
 				self.number_of_different_symbols = 0
 			# Finalizes path_strings (only run this when a path is complete.)
@@ -223,21 +225,25 @@ class PronouncerByAnalogy:
 			for i in range(len(candidates)):
 				pronunciation = candidates[i].pronunciation
 				# 2. Minimum standard deviation.
-				candidates[i].arc_lengths_standard_deviation = statistics.stdev([len(arc.intermediate_phonemes) for arc in candidates[i].arcs])
-				#print('{}: {}'.format([arc.intermediate_phonemes for arc in self.arcs], self.arc_lengths_standard_deviation))
+				candidates[i].path_structure_standard_deviation = statistics.stdev([arc.structure_component for arc in candidates[i].arcs])
+				#print('{}: {}'.format([arc.intermediate_phonemes for arc in self.arcs], self.path_structure_standard_deviation))
 
 				# 3. Maximum frequency of the same pronunciation 
 				candidates[i].frequency_of_same_pronunciation = pronunciation_to_repeat_count[pronunciation]
 				# (We'll also do sum of products here, too, even though it's not one of M&D's 5.)
 				candidates[i].sum_of_products = pronunciation_to_sum_of_product[pronunciation]
+
 				# 4. Minimum number of different symbols per candidate.
 				number_of_different_symbols = 0
-				# Merge all other candidates' symbols into a set.
-				other_candidates_symbols = set(''.join([c.pronunciation for j, c in enumerate(candidates) if j != i]))
-				for ch in pronunciation:
-					number_of_different_symbols += 1 if ch not in other_candidates_symbols else 0
+				# Isolate current candidate from others.
+				other_candidates = candidates[:i] + candidates[i + 1:]
+				# Compare char at each index of this candidate to that of every competitor, counting differences.
+				for other_candidate in other_candidates:
+					for j, ch in enumerate(pronunciation):
+						number_of_different_symbols += 1 if ch != other_candidate.pronunciation[j] else 0
 				candidates[i].number_of_different_symbols = number_of_different_symbols
 				#print('{} different symbols in {} versus {}'.format(number_of_different_symbols, candidates[i], other_candidates_symbols))
+
 				# 5. Maximum weakest link. (The weakest link is the minimum arc count)
 				candidates[i].weakest_link = min([arc.count for arc in candidates[i].arcs if not arc.contains([self.START_NODE, self.END_NODE])])
 
@@ -248,7 +254,7 @@ class PronouncerByAnalogy:
 			import itertools
 			# Rank according to these five heuristics and orders.
 			heuristic = ['arc_count_product', \
-				'arc_lengths_standard_deviation', \
+				'path_structure_standard_deviation', \
 				'frequency_of_same_pronunciation', \
 				'number_of_different_symbols', \
 				'weakest_link']
@@ -774,7 +780,7 @@ class PronouncerByAnalogy:
 
 import time
 pba = PronouncerByAnalogy()
-#pba.cross_validate_pronounce('focus', verbose=True)
+#pba.cross_validate_pronounce('merit', verbose=True)
 #results = pba.cross_validate_pronounce('mandatory', verbose=True)
-pba.cross_validate_pronounce('synechdoche', verbose=True)
-#pba.cross_validate()
+#pba.cross_validate_pronounce('longevity', verbose=True)
+pba.cross_validate()

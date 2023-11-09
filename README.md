@@ -16,7 +16,7 @@ This work is leading up to a Python implementation of the Syllabification by Ana
 3. pba.py
     - [ ] Refactor to prepare for syllabification (generalize Lattice).
     - [X] Implement the 5 scoring systems described by Marchand & Damper.
-    - [ ] Fix the scoring systems to match those described by [this version(!)](https://github.com/somamos/syllabification-by-analogy/files/13280320/089120100561674.pdf) of the paper.
+    - [X] Fix the scoring systems to match those described by [this version(!)](https://github.com/somamos/syllabification-by-analogy/files/13280320/089120100561674.pdf) of the paper.
     - [X] Fix "silence problem" (flag bigrams unrepresented in the dataset).
     - [ ] Add sba (split encodings by syllable).
 
