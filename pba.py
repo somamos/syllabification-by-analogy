@@ -256,42 +256,39 @@ class PronouncerByAnalogy:
 
 			results = tuple([self.rank_by_heuristic(candidates, heuristic[i], \
 				descending=descending[i], verbose=True) for i in range(len(heuristic))])
+			# We pass in heuristic[i] for titling print statements only.
+			results = tuple([self.rank_to_score(leaderboard, heuristic[i]) for i, leaderboard in enumerate(results)])
 
-			strategy_to_result = {}
+			labeled_results = {}
 			# Rank fusion.
-			# There are 31 ways to choose which metrics to include in one's evaluation.
+			# There are 31 possible rank fusions, i.e.:
 			# 00001, 00011, 00101, ..., 10111, 01111, 11111
-			ways = list(itertools.product([False, True], repeat=5))
+			strategies = list(itertools.product([0, 1], repeat=5))
 			# Permute through every way of scoring.
-			for way in ways:
-				# Ignore the all-false option.
-				if not any(way):
+			for strategy in strategies:
+				# Ignore 00000.
+				if not any(strategy):
 					continue
-
-				strategy = ''
-				# Flush dict for this current way of scoring.
+				label = '' # A string representation of this fusion.
+				# Flush dict for this current fusion method.
 				totals = {}
-				# Each bit maps onto a results column to include.
-				for i, bit in enumerate(way):
+				# Each bit maps onto a results column, multiplied by the bit.
+				for i, bit in enumerate(strategy):
+					label += str(bit)
 					if not bit:
-						strategy += '0'
 						continue
-					# This column of results should contribute to the total for each candidate.
-					strategy += '1'
 					column = results[i]
 					for candidate in candidates:
-						# Multiply ranks.
-						totals[candidate] = totals.get(candidate, 1) * column[candidate]
-				# Now that every column has been added, save the minimum.
-				best = min(totals, key=totals.get)
+						# Multiply by points received by this strategy, or 1 if this strategy is not included
+						# (though technically that triggers continue above.)
+						totals[candidate] = totals.get(candidate, 1) * (column[candidate] * bit + (1 - bit))
+				# Now that every column has been added, save the maximum.
+				best = max(totals, key=totals.get)
 				best_val = totals[best]
-				#print(strategy)
+				#print(label)
 				#print('{}: {}'.format(best.pronunciation, best_val))
-				strategy_to_result[strategy] = best
-
-			return strategy_to_result
-
-
+				labeled_results[label] = best
+			return labeled_results
 
 		# The best rank is 1. Then 2, then 3, and so on.
 		# Multiple candidates can share the same rank, naturally.
@@ -321,6 +318,49 @@ class PronouncerByAnalogy:
 					print('#{}: {} ({})'.format(candidate_to_rank_map[key], key.pronunciation, getattr(key, attribute)))
 			return candidate_to_rank_map
 
+		# Given a dict of candidates mapped to their rank given some heuristic,
+		# Distribute points.
+		# Return a dict of candidates mapped to points received.
+		def rank_to_score(self, candidate_to_rank_map, heuristic, verbose=True):
+			candidate_to_score_map = {}
+			# Total points awarded: N(N + 1)/2 where N is the number of candidates.
+			# Hnadling ties:
+			# For a given range of tied candidates, we evenly distribute the number 
+			# of points that would have been awarded had there been no ties within that range.
+			# CANDIDATE RANK   	1 	2 	3 	3 	3 	6	7
+			# POINTS, NO TIES 	7 	6  [5 	4 	3]	2 	1
+			# POINTS WITH TIES  7 	6  [4 	4 	4] 	2 	1
+			points_awarded_to_first = len(candidate_to_rank_map) # Points awarded to first place if not tied.
+
+			rank_to_points_map = {}
+			point_buffer = 0
+			candidates_at_this_rank = 0
+			# Thankfully, dict order is preserved. We can count on the first entry being rank 1.
+			prev_rank = -1
+			# Map each rank to the number of points awarded to that rank.
+			for n, rank in enumerate(candidate_to_rank_map.values()):
+				if prev_rank != rank:
+					# Rank has just changed. Flush the buffer.
+					point_buffer = points_awarded_to_first - n
+					candidates_at_this_rank = 1
+				else:
+					# Points will be shared evenly between these iterations' candidates.
+					point_buffer += points_awarded_to_first - n
+					candidates_at_this_rank += 1
+				# Update mapping.
+				rank_to_points_map[rank] = point_buffer/candidates_at_this_rank
+				# Prepare to iterate.
+				prev_rank = rank
+			if verbose:
+				print('Points awarded to candidates for {}:'.format(heuristic))
+			# Distribute the points to each rank.
+			for candidate in candidate_to_rank_map:
+				rank = candidate_to_rank_map[candidate]
+				points = rank_to_points_map[rank]
+				if verbose:
+					print('{}, rank {}, got {} points'.format(candidate.pronunciation, rank, points))
+				candidate_to_score_map[candidate] = points
+			return candidate_to_score_map
 
 		def decide(self, candidates, verbose=False):
 			from operator import attrgetter
@@ -712,13 +752,11 @@ class PronouncerByAnalogy:
 			print('{} nodes and {} arcs.'.format(len(pl.nodes), len(pl.arcs)))
 		candidates = pl.find_all_paths()
 		results = pl.decide(candidates)
-		#if verbose and best is not None:
-		#	print('Best: {}'.format([str(item) for item in best]))
 		return results
 
 import time
 pba = PronouncerByAnalogy()
-#pba.cross_validate_pronounce('ineptitude', verbose=True)
+#pba.cross_validate_pronounce('focus', verbose=True)
 pba.cross_validate_pronounce('mandatory', verbose=True)
 #pba.cross_validate_pronounce('synechdoche', verbose=True)
-#pba.cross_validate(1004)
+#pba.cross_validate()
