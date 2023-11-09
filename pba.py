@@ -163,11 +163,18 @@ class PronouncerByAnalogy:
 			# Link unrepresented bigrams.
 			# fixes the silence problem.
 			self.link_unrepresented()
+			# However, this is not sufficient. An extant bigram STILL
+			# may not have any paths that lead into it if the phonemes don't match.
+			# We will keep track of furthest_index and attempt to manually dig further
+			# if no paths exist.
+			furthest_index = 0
 
 			candidates = []
 			def util(u, d, candidate_buffer):
 				nonlocal min_length
+				nonlocal furthest_index
 				u.visited = True
+				furthest_index = u.index if u.index > furthest_index else furthest_index
 				if u == d:
 					complete_candidate = self.Candidate(candidate_buffer)
 					complete_candidate.solidify()
@@ -184,14 +191,18 @@ class PronouncerByAnalogy:
 							util(v, d, candidate_buffer) # Recur over successor node.
 						candidate_buffer.pop(self) # Wipe candidate buffer.
 				u.visited = False # Allow future revisiting.
-			# Set visited to False for all.
-			for node in self.nodes.values():
-				node.visited = False
-			candidate_buffer = self.Candidate()
-			# Begin breadth-first search listing all paths.
-			util(self.START_NODE, self.END_NODE, candidate_buffer)
-			if len(candidates) == 0:
-				print('Warning. No paths were found.')
+			while furthest_index < len(self.letters):
+				# Set visited to False for all.
+				for node in self.nodes.values():
+					node.visited = False
+				candidate_buffer = self.Candidate()
+				# Begin breadth-first search listing all paths.
+				util(self.START_NODE, self.END_NODE, candidate_buffer)
+				if len(candidates) == 0:
+					print('Warning. No paths were found. Furthest index: {}'.format(furthest_index))
+					# Patch every gap associated with the pair of letters beginning at that index.
+					self.link_silences(furthest_index)
+
 			return candidates
 
 		# Count identical pronunciations generating
@@ -261,7 +272,7 @@ class PronouncerByAnalogy:
 			descending = [True, False, True, False, True]
 
 			results = tuple([self.rank_by_heuristic(candidates, heuristic[i], \
-				descending=descending[i], verbose=True) for i in range(len(heuristic))])
+				descending=descending[i], verbose=False) for i in range(len(heuristic))])
 			# We pass in heuristic[i] for titling print statements only.
 			results = tuple([self.rank_to_score(leaderboard, heuristic[i]) for i, leaderboard in enumerate(results)])
 
@@ -327,7 +338,7 @@ class PronouncerByAnalogy:
 		# Given a dict of candidates mapped to their rank given some heuristic,
 		# Distribute points.
 		# Return a dict of candidates mapped to points received.
-		def rank_to_score(self, candidate_to_rank_map, heuristic, verbose=True):
+		def rank_to_score(self, candidate_to_rank_map, heuristic, verbose=False):
 			candidate_to_score_map = {}
 			# Total points awarded: N(N + 1)/2 where N is the number of candidates.
 			# Handling ties:
@@ -463,6 +474,39 @@ class PronouncerByAnalogy:
 			elif start_index + len(sub_letters) == len(self.letters):
 				end_arc = create_or_iterate_arc('', b, self.END_NODE)
 
+		# Fix the silence problem.
+		# Every node at index furthest should link to every node at furthest + 1.
+		# (Thanks to link_unrepresented, a node at every index is guaranteed to exist.)
+		def link_silences(self, furthest):
+			import re
+			# Link every node at index i to every node at index i + 1.
+			added_count = 0
+			def link(i):
+				nonlocal added_count
+				furthest_reached_nodes = []
+				nodes_beyond = []
+				for hash_ in self.nodes:
+					if self.nodes[hash_].index == i:
+						furthest_reached_nodes.append(self.nodes[hash_])
+					elif self.nodes[hash_].index == i + 1:
+						nodes_beyond.append(self.nodes[hash_])
+				print('Adding {} x {} arcs'.format(len(furthest_reached_nodes), len(nodes_beyond)))
+				for from_node in furthest_reached_nodes:
+					for to_node in nodes_beyond:
+						self.add(from_node.matched_letter + to_node.matched_letter, \
+							from_node.phoneme + to_node.phoneme, i)
+						added_count += 1
+			# Get the unpaired letters by index.
+			silent_pair = self.letters[furthest] + self.letters[furthest + 1]
+			# Find every instance of the problematic letters.
+			indices = [m.start() for m in re.finditer('(?={})'.format(silent_pair), self.letters)]
+			# Patch all instances.
+			print('Instances of {}:\n{}'.format(silent_pair, indices))
+			for index in indices:
+				link(index)
+			print('Successfully added {} arcs.'.format(added_count))
+
+		# Prophylactic measure.
 		# Adds nodes between gaps in paths to solve the "silence problem."
 		def link_unrepresented(self):
 			if not len(self.unrepresented_bigrams):
@@ -782,5 +826,8 @@ import time
 pba = PronouncerByAnalogy()
 #pba.cross_validate_pronounce('merit', verbose=True)
 #results = pba.cross_validate_pronounce('mandatory', verbose=True)
-#pba.cross_validate_pronounce('longevity', verbose=True)
-pba.cross_validate()
+pba.cross_validate_pronounce('albuquerque', verbose=True)
+pba.cross_validate_pronounce('uqauqauqauqauqauqa', verbose=True)
+#pba.cross_validate()
+
+
