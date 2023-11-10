@@ -3,13 +3,88 @@
 # "Can syllabification improve pronunciation by analogy of English?
 
 from lattice import Lattice, ERRORS
-from pba import PronouncerByAnalogy
 
 class SyllabifierByAnalogy():
 
+	def cross_validate(self, start=0):
+		from datetime import datetime
+		from collections.abc import Iterable
+		now = datetime.today().strftime('%Y-%m-%d-%H-%M-%S')
+		total = 0
+		trial = start
+		trial_count = len(self.lexical_database) - 1
+		trial_word = ''
+		ground_truth = ''
+		# Map the strategy name to the titular stat.
+		words_correct = {}
+		words_total = {}
+		phonemes_correct = {}
+		phonemes_total = {}
+		with open('Data/Syllabification_Results_{}.txt'.format(now), 'w', encoding='latin-1') as f:
+			def end_trial(output):
+				nonlocal trial
+				f.write(output)
+				trial += 1
+			# Iterate the occurrences of this error. Return the line to append to the file.
+			def count_error(code):
+				description = ERRORS[code]
+				self.simple_print(code)
+				# Log instance of error code.
+				words_total[description] = words_total.get(description, 0) + 1
+				# Print results.
+				return '{}, {}\n\n'.format(description, words_total.get(description, 0))
+
+			while trial < trial_count:
+				output = ''
+				i = 0
+				skipped = False
+				
+				keys = list(self.lexical_database.keys())
+
+				trial_word = keys[trial]
+				#trial_word = self.add_junctures(trial_word)
+				output += 'TRIAL {}, {}\n'.format(trial, trial_word)
+				ground_truth = self.lexical_database[trial_word]
+				print('Loading trial #{}: {} ({})...'.format(trial, trial_word, ground_truth))
+
+				results = self.cross_validate_syllabify(trial_word)
+				if not isinstance(results, Iterable):
+					# Print the error.
+					error_code = results
+					output += count_error(error_code)
+					end_trial(output)
+					continue
+
+				for key in results:
+					method = key
+					phoneme_correct = 0
+					total_phonemes = 0
+					# Iterate words for which this trial had a result.
+					words_total[key] = words_total.get(key, 0) + 1
+					# Evaluate that result.
+					if results[key].pronunciation == ground_truth:
+						words_correct[key] = words_correct.get(key, 0) + 1
+					# Iterate phonemes for which this trial had a result.
+					for index, ch in enumerate(results[key].pronunciation):
+						# Total always iterates.
+						phonemes_total[key] = phonemes_total.get(key, 0) + 1
+						if index < len(ground_truth) and ch == ground_truth[index]:
+							# Correct only when correct.
+							phonemes_correct[key] = phonemes_correct.get(key, 0) + 1
+				for key in results:
+					output += '{}, {}, {}, {}, {}\n'.format(key, words_correct.get(key, 0), words_total.get(key, 0), \
+						phonemes_correct.get(key, 0), phonemes_total.get(key, 0))
+					print('{}: {}, {}. {}/{} words correct ({:.2f}%), {}/{} phonemes correct ({:.2f}%)'.format(key, results[key].pronunciation, results[key].pronunciation == ground_truth, words_correct.get(key, 0), words_total.get(key, 0), \
+						100*words_correct.get(key, 0)/words_total.get(key, 1), phonemes_correct.get(key, 0), phonemes_total.get(key, 0), 100*phonemes_correct.get(key, 0)/phonemes_total.get(key, 0)))
+				output += '\n'
+				end_trial(output)
+				# Total only increments after a nonskipped trial.
+				total += 1
+				print()
+
 	# Removes input word from the dataset before pronouncing if present.
-	# Returns 
-	def cross_validate_pronounce(self, input_word, verbose=False):
+	# Returns a dict of string labels per strategy mapped to pronunciation results.
+	def cross_validate_syllabify(self, input_word, verbose=False):
 		input_word = self.add_junctures(input_word)
 
 		trimmed_lexical_database = {}
@@ -28,13 +103,13 @@ class SyllabifierByAnalogy():
 					print('Removed {} ({}) from dataset.'.format(input_word, answer))
 		if not found:
 			print('The dataset did not have {}.'.format(input_word))
-		results = self.pronounce(input_word, (trimmed_lexical_database, trimmed_substring_database), verbose=False)
+		results = self.syllabify(input_word, (trimmed_lexical_database, trimmed_substring_database), verbose=False)
 		if verbose:
 			self.simple_print(results, answer)
 
 		return results
 
-	def pronounce(self, input_word, trimmed_databases=None, verbose=False):
+	def syllabify(self, input_word, trimmed_databases=None, verbose=False):
 		# Junctures added?
 		input_word = self.add_junctures(input_word)
 
@@ -42,7 +117,7 @@ class SyllabifierByAnalogy():
 		lexical_database = self.lexical_database
 		substring_database = self.substring_database
 
-		# Refer to pruned versions when called by cross_validate_pronounce.
+		# Refer to pruned versions when called by cross_validate_syllabify.
 		if trimmed_databases != None:
 			lexical_database = trimmed_databases[0]
 			substring_database = trimmed_databases[1]
@@ -270,9 +345,10 @@ class SyllabifierByAnalogy():
 
 sba = SyllabifierByAnalogy()
 
-#sba.cross_validate_pronounce('test', verbose=True)
-#sba.cross_validate_pronounce('testing', verbose=True)
-#sba.cross_validate_pronounce('mandatory', verbose=True)
-#sba.cross_validate_pronounce('authoritative', verbose=True)
-#sba.cross_validate_pronounce('national', verbose=True)
-sba.cross_validate_pronounce('stationery', verbose=True)
+#sba.cross_validate_syllabify('test', verbose=True)
+#sba.cross_validate_syllabify('testing', verbose=True)
+#sba.cross_validate_syllabify('mandatory', verbose=True)
+#sba.cross_validate_syllabify('authoritative', verbose=True)
+#sba.cross_validate_syllabify('national', verbose=True)
+#sba.cross_validate_syllabify('stationery', verbose=True)
+sba.cross_validate(36645)
