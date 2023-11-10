@@ -18,8 +18,8 @@ class SyllabifierByAnalogy():
 		# Map the strategy name to the titular stat.
 		words_correct = {}
 		words_total = {}
-		phonemes_correct = {}
-		phonemes_total = {}
+		junctures_correct = {}
+		junctures_total = {}
 		with open('Data/Syllabification_Results_{}.txt'.format(now), 'w', encoding='latin-1') as f:
 			def end_trial(output):
 				nonlocal trial
@@ -56,26 +56,28 @@ class SyllabifierByAnalogy():
 					continue
 
 				for key in results:
-					method = key
-					phoneme_correct = 0
-					total_phonemes = 0
 					# Iterate words for which this trial had a result.
 					words_total[key] = words_total.get(key, 0) + 1
 					# Evaluate that result.
 					if results[key].pronunciation == ground_truth:
 						words_correct[key] = words_correct.get(key, 0) + 1
-					# Iterate phonemes for which this trial had a result.
+					# Iterate JUNCTURES for which this trial had a result.
 					for index, ch in enumerate(results[key].pronunciation):
+						# Skip non-junctures.
+						if ch not in '|*':
+							continue
 						# Total always iterates.
-						phonemes_total[key] = phonemes_total.get(key, 0) + 1
+						junctures_total[key] = junctures_total.get(key, 0) + 1
 						if index < len(ground_truth) and ch == ground_truth[index]:
 							# Correct only when correct.
-							phonemes_correct[key] = phonemes_correct.get(key, 0) + 1
+							junctures_correct[key] = junctures_correct.get(key, 0) + 1
 				for key in results:
 					output += '{}, {}, {}, {}, {}\n'.format(key, words_correct.get(key, 0), words_total.get(key, 0), \
-						phonemes_correct.get(key, 0), phonemes_total.get(key, 0))
-					print('{}: {}, {}. {}/{} words correct ({:.2f}%), {}/{} phonemes correct ({:.2f}%)'.format(key, results[key].pronunciation, results[key].pronunciation == ground_truth, words_correct.get(key, 0), words_total.get(key, 0), \
-						100*words_correct.get(key, 0)/words_total.get(key, 1), phonemes_correct.get(key, 0), phonemes_total.get(key, 0), 100*phonemes_correct.get(key, 0)/phonemes_total.get(key, 0)))
+						junctures_correct.get(key, 0), junctures_total.get(key, 0))
+					print('{}: {}, Correct?: {}. {}/{} words correct ({:.2f}%), {}/{} junctures correct ({:.2f}%)'.format( \
+						key, results[key].pronunciation, results[key].pronunciation == ground_truth, \
+						words_correct.get(key, 0), words_total.get(key, 0), 100*words_correct.get(key, 0)/words_total.get(key, 1), \
+						junctures_correct.get(key, 0), junctures_total.get(key, 0), 100*junctures_correct.get(key, 0)/junctures_total.get(key, 0)))
 				output += '\n'
 				end_trial(output)
 				# Total only increments after a nonskipped trial.
@@ -134,7 +136,7 @@ class SyllabifierByAnalogy():
 		def populate_legacy():
 			nonlocal input_word
 			nonlocal entry_word
-			nonlocal phonemes
+			nonlocal syllable_domain
 			length_difference = len(input_word) - len(entry_word)
 			# a is always the longer word.
 			a, b = (input_word, entry_word) if length_difference >= 0 else (entry_word, input_word)
@@ -163,10 +165,10 @@ class SyllabifierByAnalogy():
 							continue
 						if length_difference < 0:
 							# When the entry word is bigger, phoneme indices "shift right" to remain accurate.
-							self.pl.add(match, phonemes[index + offset : index + offset + length], index)
+							self.pl.add(match, syllable_domain[index + offset : index + offset + length], index)
 						else:
 							# When the entry word is smaller, matched indices "shift right" to remain accurate.
-							self.pl.add(match, phonemes[index : index + length], index + offset)
+							self.pl.add(match, syllable_domain[index : index + length], index + offset)
 		# Maps every possible substring greater than length 2 to their first index of occurrence
 		# in order, conveniently, from smallest to largest (per starting index).
 		input_precalculated_substrings = [[input_word[i:j] for j in range(i, len(input_word) + 1) if j - i > 1] for i in range(0, len(input_word) + 1)]
@@ -187,11 +189,11 @@ class SyllabifierByAnalogy():
 					# Entry word is the bigger word.
 					if length_diff <= 0:
 						# The smaller word's starting index, then, is i, because of how input_precalculated_substrings are organized.
-						# Locate the indices in the entry word out of which to slice the phonemes.
-						self.pl.add(substr, phonemes[bigger_index : bigger_index + len(substr)], i)
+						# Locate the indices in the entry word out of which to slice the syllable_domain.
+						self.pl.add(substr, syllable_domain[bigger_index : bigger_index + len(substr)], i)
 					# Input word is the bigger word.
 					else:
-						self.pl.add(substr, phonemes[i : i + len(substr)], bigger_index)
+						self.pl.add(substr, syllable_domain[i : i + len(substr)], bigger_index)
 			# TODO: Only match upon a break. That way,
 			# to,
 			# tor,
@@ -200,7 +202,7 @@ class SyllabifierByAnalogy():
 			nonlocal input_precalculated_substrings
 			nonlocal input_word
 			nonlocal entry_word
-			nonlocal phonemes
+			nonlocal syllable_domain
 			length_difference = len(input_word) - len(entry_word)
 			# Input word is shorter.
 			if length_difference <= 0:
@@ -243,7 +245,7 @@ class SyllabifierByAnalogy():
 				if prev_matching_substring != NO_MATCH:
 					add_entry(prev_matching_substring, bigger_word, length_difference)
 		for entry_word in lexical_database:
-			phonemes = lexical_database[entry_word]
+			syllable_domain = lexical_database[entry_word]
 			#populate_precalculated()
 			populate_legacy()
 		candidates = self.pl.find_all_paths()
