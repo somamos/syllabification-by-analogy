@@ -127,8 +127,14 @@ class Lattice:
 			self.path_strings = self.path_strings[:-2]
 
 	# Initialize pronunciation lattice.
-	def __init__(self, letters):
+	# Breadth-first search will print # candidate paths every RECURRENCES_PER_PRINT. 
+	# Breadth-first search will give up after QUIT_THRESHOLD recurrences.
+	# The default values are tuned to terminate the dataset's longest word, "supercalifragilisticexpialidocious,"
+	# after a couple of minutes.
+	def __init__(self, letters, RECURRENCES_PER_PRINT=2500000, QUIT_THRESHOLD=25000000):
 		self.letters = letters
+		self.RECURRENCES_PER_PRINT = RECURRENCES_PER_PRINT
+		self.QUIT_THRESHOLD	= QUIT_THRESHOLD
 
 		self.nodes = {}
 		self.arcs = {}
@@ -180,10 +186,10 @@ class Lattice:
 			nonlocal min_length
 			nonlocal furthest_index
 			nonlocal util_call_count
-			if util_call_count != 0 and util_call_count%2500000 == 0:
+			if util_call_count != 0 and util_call_count%self.RECURRENCES_PER_PRINT == 0:
 				print('Recurred {} times. {} candidates found.'.format(util_call_count, len(candidates)))
 			util_call_count += 1
-			if util_call_count > 25000000:
+			if util_call_count > self.QUIT_THRESHOLD:
 				overflow = True
 				return
 			u.visited = True

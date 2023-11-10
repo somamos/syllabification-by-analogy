@@ -295,11 +295,10 @@ class PronouncerByAnalogy:
 		print('Ground truth: {}'.format(ground_truth))
 
 
-import time
-pba = PronouncerByAnalogy()
+#pba = PronouncerByAnalogy()
 #pba.cross_validate_pronounce('merit', verbose=True)
 #results = pba.cross_validate_pronounce('mandatory', verbose=True)
-pba.pronounce('uqauqauqauqauqauqa', verbose=True)
+#pba.pronounce('uqauqauqauqauqauqa', verbose=True)
 #pba.cross_validate_pronounce('uqauqauqauqauqauqa', verbose=True)
 #pba.cross_validate()
 
