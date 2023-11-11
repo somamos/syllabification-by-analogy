@@ -1,7 +1,7 @@
 # syllabification-by-analogy
 
 ## SbA and PbA Success! (11/11/2023)
-The "leave-one-out" cross validation tests for __pronunciation by analogy__ AND __syllabification by analogy__ are complete. Compared to the results of M&D's original publication, this repository demonstrates considerable pronunciation improvmeent (below, left) and modest syllabification improvement (below, right), probably due to a greater number of words in the lexical database (58,989 versus 19,594).
+The "leave-one-out" cross validation tests for __pronunciation by analogy__ AND __syllabification by analogy__ are complete. Compared to the results of M&D's original publication, this repository demonstrates considerable pronunciation improvement (below, left) and modest syllabification improvement (below, right), probably due to a greater number of words in the lexical database (58,989 versus 19,594).
 
 ![results_](https://github.com/somamos/syllabification-by-analogy/assets/141623014/f39516db-cd8d-4e1a-a0e5-8e99fd0dc45a)
 
