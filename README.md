@@ -1,7 +1,7 @@
 # syllabification-by-analogy
 
 ## PbA Success! (11/9/2023)
-The first "leave-one-out" test for this repository's __pronunciation by analogy__ implementation is complete. Results seem to indicate improvement across the board over M&D's implementation, probably due to a greater number of words in the lexical database (65,915 versus 19,594).
+The first "leave-one-out" test for this repository's __pronunciation by analogy__ implementation is complete. Results seem to indicate improvement across the board over M&D's implementation, probably due to a greater number of words in the lexical database (54,019 versus 19,594).
 
 ![image](https://github.com/somamos/syllabification-by-analogy/assets/141623014/2695ae3f-da1f-4fe8-8ad2-e47d128f5cb2)
 
