@@ -9,10 +9,12 @@ class PronouncerByAnalogy:
 		from datetime import datetime
 		from collections.abc import Iterable
 		now = datetime.today().strftime('%Y-%m-%d-%H-%M-%S')
-		prev_time = time.time()
 		total = 0
 		trial = start
-		trial_count = len(self.lexical_database) - 1
+		# Cross validate either against itself OR against some specific wordlist (whose path was passed into the constructor.)
+		wordlist = list(self.lexical_database.keys()) if self.cross_validation_wordlist is None else self.cross_validation_wordlist
+
+		trial_count = len(wordlist) - 1
 		trial_word = ''
 		ground_truth = ''
 		# Map the strategy name to the titular stat.
@@ -39,11 +41,14 @@ class PronouncerByAnalogy:
 				i = 0
 				skipped = False
 				
-				keys = list(self.lexical_database.keys())
-
-				trial_word = keys[trial]
+				trial_word = wordlist[trial]
 				output += 'TRIAL {}, {}\n'.format(trial, trial_word)
-				ground_truth = self.lexical_database[trial_word]
+				ground_truth = self.lexical_database.get(trial_word, '')
+				if ground_truth == '':
+					# The wordlist has a word that is not in this dict.
+					trial += 1
+					#print(trial, trial_count, trial_word)
+					continue
 				print('Loading trial #{}: {} ({})...'.format(trial, trial_word, ground_truth))
 
 				results = self.cross_validate_pronounce(trial_word)
@@ -83,24 +88,35 @@ class PronouncerByAnalogy:
 
 				#print('Guess: {}\nGround truth: {}'.format(best, ground_truth))
 				#print('{} vs. {}'.format(ground_truth, best[0]))
-				prev_time = time.time()
 				print()
 
-	def __init__(self, path="Preprocessing/Out/output.txt", verbose=True):
+	def __init__(self, dataset_path, wordlist_path=None, verbose=False):
+		self.cross_validation_wordlist = None
+		if wordlist_path is not None:
+			self.cross_validation_wordlist = []
+			with open(wordlist_path, 'r', encoding='latin-1') as e:
+				for line in e:
+					# For cross validating with a previous version's wordlist.
+					line = line.split()
+					self.cross_validation_wordlist.append('#{}#'.format(line[0]))
+
 		self.pl = None
 		print('Loading lexical database...')
 		# Assign Lexical Database.
 		self.lexical_database = {}
 		self.substring_database = {}
-		with open(path, 'r', encoding='latin-1') as f:
+		with open(dataset_path, 'r', encoding='latin-1') as f:
 			for line in f:
 				# Add # and $.
 				line = line.split()
-				line[0] = '#{}#'.format(line[0])
-				line[1] = '${}$'.format(line[1])
+				if not line[0].startswith('#') and not line[0].endswith('#'):
+					line[0] = '#{}#'.format(line[0])
+				if not line[1].startswith('$') and not line[1].endswith('$'):
+					line[1] = '${}$'.format(line[1])
 				self.lexical_database[line[0]] = line[1]
 				self.substring_database[line[0]] = [[line[0][i:j] for j in range(i, len(line[0]) + 1) \
 					if j - i > 1] for i in range(0, len(line[0]) - 1)]
+
 				if verbose:
 					print('{}\n{}\n{}\n\n'.format(line[0], line[1], self.substring_database[line[0]]))
 
@@ -295,11 +311,11 @@ class PronouncerByAnalogy:
 		print('Ground truth: {}'.format(ground_truth))
 
 
-#pba = PronouncerByAnalogy()
+pba = PronouncerByAnalogy("Preprocessing\\Out\\output_c_2023-11-11-09-08-47.txt", wordlist_path="Preprocessing\\Out\\output_a.txt")
 #pba.cross_validate_pronounce('merit', verbose=True)
 #results = pba.cross_validate_pronounce('mandatory', verbose=True)
 #pba.pronounce('uqauqauqauqauqauqa', verbose=True)
 #pba.cross_validate_pronounce('uqauqauqauqauqauqa', verbose=True)
-#pba.cross_validate()
+pba.cross_validate()
 
 
