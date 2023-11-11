@@ -1,16 +1,18 @@
 # syllabification-by-analogy
 
-## PbA Success! (11/9/2023)
-The first "leave-one-out" test for this repository's __pronunciation by analogy__ implementation is complete. Results seem to indicate improvement across the board over M&D's implementation, probably due to a greater number of words in the lexical database (58,989 versus 19,594).
+## SbA and PbA Success! (11/11/2023)
+The "leave-one-out" cross validation tests for __pronunciation by analogy__ AND __syllabification by analogy__ are complete. Compared to M&D's original publication, this repository demonstrates considerable improvement for pronunciation (below, left) and modest improvement for syllabification (below, right), probably due to a greater number of words in the lexical database (58,989 versus 19,594).
 
-![image](https://github.com/somamos/syllabification-by-analogy/assets/141623014/2695ae3f-da1f-4fe8-8ad2-e47d128f5cb2)
+![results_](https://github.com/somamos/syllabification-by-analogy/assets/141623014/f39516db-cd8d-4e1a-a0e5-8e99fd0dc45a)
+
+Future effort will go toward a C# version for a game development concept, the original impetus for this study. More details soon.
 
 The repository currently consists of 
 
 1. Preprocessing to merge common words between a pronunciation wordlist and a syllabified wordlist,
 2. Marchand & Damper's text-phoneme alignment algorithm,
 3. Dedina & Nusbaum's pronunciation by analogy method (with tweaks by M&D), and
-4. a preliminary implementation of Marchand & Damper's syllabification by analogy (SbA).
+4. An implementation of Marchand & Damper's syllabification by analogy (SbA).
 
 Read more about their algorithm [here](https://github.com/somamos/syllabification-by-analogy/files/13186641/Damper.Marchand.s.Can.syllabification.improve.pronunciation.by.analogy.of.English.pdf).
 
