@@ -92,6 +92,7 @@ context_dependent = \
 }
 '''
 
+# The representation of a word used by preprocess.py and align.py.
 class Word:
 	def append_self(self, arr):
 		arr.append('{:20} {:20} {:20}\n'.format(self.letters, self.phonemes, self.syllable_boundary_encodings))
@@ -134,14 +135,9 @@ class Word:
 		self.syllable_boundary_encodings = final_encoding
 		return True
 
-def preprocess():
-	# To be filled with references to word objects.
+# Returns a list of word objects loaded from dataset a.
+def load_phonemes(a_path):
 	corpus = []
-	dataset_b = {}
-	# location of dataset a and b
-	a_path = 'Raw/a.txt'
-	b_path = 'Raw/b.txt'
-
 	# Dataset a has pronunciation information.
 	with open(a_path, 'r', encoding='latin-1') as a:
 		ending_in_schwa_count = 0
@@ -201,7 +197,11 @@ def preprocess():
 			#print('Added {}, {}, and {} to corpus.'.format(letters, phonemes, stresses))
 		print('{} words ending in schwa have been fixed.'.format(ending_in_schwa_count))
 	print('{} words added from a.'.format(len(corpus)))
+	return corpus
 
+# Returns a dict of words' spellings mapped to syllable boundary encodings, loaded from dataset b.
+def load_syllable_encodings(b_path):
+	dataset_b = {}
 	# Dataset b has syllable boundary information.
 	# For the sake of consistency, and simplicity, let's try
 	# treating these simple rules for nucleus determination as ground truth.
@@ -258,16 +258,18 @@ def preprocess():
 
 				dataset_b[letters] = syllable_boundary_encodings
 	print('{} words added from b.'.format(len(dataset_b.keys())))
+	return dataset_b
 
+def merge(corpus, dataset_b):
 	# Combine the datasets.
 	final = []
 	# A set of all added spellings. Used to detect duplicates.
 	final_spellings = set()
 	keys = dataset_b.keys()
-	mismatched = 0	# The word was found in b, but it had a different number of syllables.
+	mismatched = 0	# The word was found in b, but the number of syllables differed between a and b.
 	unmatched = 0 # The word was not found in b.
 	unmatcheds = [] # To attempt to salvage.
-	duplicates = 0 # These catch words that were duplicated by disabling "Skip homonyms" above.
+	duplicates = 0 # Count words that were duplicated by disabling "Skip homonyms" above.
 	# More specifically, we give a's duplicates a chance to merge with b, without 
 	# erroneously adding them twice if both fit.
 
@@ -290,6 +292,7 @@ def preprocess():
 			#print('Found {} in dataset b'.format(word.letters))
 
 	print('{} merged, {} mismatched, {} discarded duplicates, {} unmatched.'.format(len(final), mismatched, duplicates, unmatched)) 
+	# Attempt to salvage.
 	salvaged = 0
 	salvageds = []
 	# Naively attempt to salvage unmatched words.
@@ -338,7 +341,10 @@ def preprocess():
 			# TODO: Replacements...
 	print(fix_counter)
 	print('Of the {} unmatched, {} were salvaged.'.format(unmatched, salvaged))
+	return final
 
+
+def populate_word_anchors(final):
 	# Populate word anchors.
 	# Phoneme nuclei "belong" where the syllable encoding nucleus is.
 	# We pair the nuclei's indices to the letter associated with the nucleus.
@@ -366,7 +372,17 @@ def preprocess():
 			word.anchors.append((encoded_nucleus_locations[index],phoneme_nucleus_locations[index]))
 			#print('{}th index in the word {} anchored to the {}th phoneme of {}.'.format( \
 			#	encoded_nucleus_locations[index], word.letters, phoneme_nucleus_locations[index], word.phonemes))
+	return final
 
+def combine_a_and_b():
+	# location of dataset a and b
+	a_path = 'Raw/a.txt'
+	b_path = 'Raw/b.txt'
+
+	corpus = load_phonemes(a_path)
+	dataset_b = load_syllable_encodings(b_path)
+	final = merge(corpus, dataset_b)
+	final = populate_word_anchors(final)
 
 	# See "Aligning Text and Phonemes for Speech Technology Applications Using an EM-Like Algorithm"
 	from align import Aligner
@@ -378,6 +394,7 @@ def preprocess():
 	errors = []
 	count = 0
 	total = 0
+
 	for word in final:
 		# Words with valid 1:1 mappings:
 		if(len(word.syllable_boundary_encodings) == len(word.letters) == len(word.phonemes)): 
@@ -390,7 +407,7 @@ def preprocess():
 	with open('Out/output.txt', 'w') as c:
 		c.writelines(out)
 
-preprocess()
+combine_a_and_b()
 
 
 
