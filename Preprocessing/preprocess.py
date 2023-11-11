@@ -61,7 +61,10 @@ unmapped = \
 {						# S&R examples:
 	# diphthongs		
 	'yu': 'Y',	# c_u_te
+	'yU': 'Y', # c_U_rate
 	'yx': 'Y', # artic_u_lar
+	'xl': 'L', # yentl
+	'Izxm': 'IzM', # escap_ism_
 	# clusters
 	'kS': 'K',	# se_x_ual
 	'ks': 'X',	# e_xc_ess
@@ -76,7 +79,7 @@ all_phonemes = list(phoneme_map.values()) + list(unmapped.values())
 all_letters = alphabet = [char for char in 'abcdefghijklmnopqrstuvwxyz']
 
 vowel_letters = 'aeiouy'
-nuclei = 'aAc@^WiIoOEReUuYx*'
+nuclei = 'aAc@^WiIoOEReUuYx*LM'
 
 '''
 # These features described in S&R can be teased out of dataset a given additional context.
@@ -94,17 +97,96 @@ context_dependent = \
 
 # The representation of a word used by preprocess.py and align.py.
 class Word:
-	def append_self(self, arr):
+	def append_self(self, arr, include_encodings=True):
+		if not include_encodings:
+			arr.append('{:20} {:20}\n'.format(self.letters, self.phonemes))
+			return arr
 		arr.append('{:20} {:20} {:20}\n'.format(self.letters, self.phonemes, self.syllable_boundary_encodings))
 		return arr
 
-	def __init__(self, letters, phonemes, stresses):
+	def __init__(self, letters, phonemes, stresses, unaligned_boundary_buffer=None):
 		self.letters = letters
 		self.phonemes = phonemes
 		self.stresses = stresses
 		self.syllable_count = len(stresses)
+		self.syllable_boundary_encodings = None # Gets populated later.
+		# Additions for dataset c, which (dataset) includes syllable boundaries in the unaligned phoneme domain.
+		# We will use this information to infer syllable boundary placement in the letters domain after alignment.
+		self.phonemes_unaligned = phonemes
+		self.unaligned_boundary_buffer = unaligned_boundary_buffer
+		# This gets initialized post-alignment.
+		self.boundary_buffer = None
 		# "anchor" pre-alignment phoneme nucleus indices to the encodings' nucleus indices.
 		self.anchors = []
+
+	# Translate pre-alignment indices to post-alignment ones. 
+	# (Return True upon success, False upon failure.)
+	# For instance, take the word 'ellipsis.' IlI[p]sIs -> Il-I[p]sIs
+	# Its phoneme 'p' at unaligned index 3 now belongs at aligned index 4.
+	# We can't just index naively by the phoneme, due to repeat characters.
+	# unaligned = IlIpsIs
+	# aligned   = Il-IpsIs
+	# Whenever the character at unaligned does NOT equal the character at aligned,
+	# it must be due to a dash. (if not, print a warning.)
+	# iterate aligned until they equal each other again.
+	# At every instance unaligned is in the unaligned boundary indices list, push the
+	# current aligned index to the aligned boundary indices list.
+	def adjust_boundary_indices(self):
+		aligned = self.phonemes
+		unaligned = self.phonemes_unaligned
+		if self.phonemes_unaligned == self.phonemes:
+			# No adjustment needed.
+			self.boundary_buffer = self.unaligned_boundary_buffer
+			return True
+		# Initialize boundary buffer.
+		self.boundary_buffer = []
+
+		offset = 0
+		for i in range(len(self.phonemes_unaligned)):
+			while unaligned[i] != aligned[i + offset]:
+				# Sanity check.
+				if aligned[i + offset] != '-':
+					#print('Warning. The lack of alignment is NOT due to a dash. This should never happen.')
+					#print('Word: {} Unaligned: {} Aligned: {} index: {} offset: {}'.format(self.letters, unaligned, aligned, i, offset))
+					return False
+				offset += 1
+			if i in self.unaligned_boundary_buffer:
+				self.boundary_buffer.append(i + offset)
+		#print('{}\'s aligned phonemes: {}, Buffer before alignment: {} After: {}'.format( \
+		#	self.letters, aligned, self.unaligned_boundary_buffer, self.boundary_buffer))
+		return True
+
+	# For dataset c. Return True upon success, False otherwise.
+	def encode_boundaries_post_alignment(self):
+		# The number of boundaries between syllables is always 1 less than the syllable count.
+		if self.syllable_count != len(self.boundary_buffer) + 1:
+			return False
+		final_encoding = ''
+		index = 0
+		reached_nucleus = False
+		stresses_reached = 0
+		for index, ph in enumerate(self.phonemes):
+			if index in self.boundary_buffer: # The previous index marked syllable end.
+				reached_nucleus = False # New syllable. Reset nucleus flag.
+			# Every character in a syllable "points" to the nucleus.
+			if not reached_nucleus:
+				# Handle nuclei.
+				if ph in nuclei:
+					# This is the nucleus. Insert stress level.
+					final_encoding += self.stresses[stresses_reached]
+					stresses_reached += 1
+					reached_nucleus = True
+				else:
+					# A consonant before the nucleus.
+					final_encoding += '>' # Point towards future nucleus.
+			else: 
+				# We've reached the nucleus already. Point the other way.
+				final_encoding += '<'
+		print('{} encoded to {} from boundary indices {} and phonemes {}.'.format( \
+			self.letters, final_encoding, self.boundary_buffer, self.phonemes))
+
+		self.syllable_boundary_encodings = final_encoding
+		return True
 	# Dataset a had the stresses per syllable.
 	# Dataset b has the encoding patterns.
 	# Combine them here.
@@ -374,6 +456,8 @@ def populate_word_anchors(final):
 			#	encoded_nucleus_locations[index], word.letters, phoneme_nucleus_locations[index], word.phonemes))
 	return final
 
+# Dataset a contains only phoneme information.
+# Dataset b contains syllable information.
 def combine_a_and_b():
 	# location of dataset a and b
 	a_path = 'Raw/a.txt'
@@ -407,14 +491,142 @@ def combine_a_and_b():
 	with open('Out/output.txt', 'w') as c:
 		c.writelines(out)
 
-combine_a_and_b()
+# Dataset c is a version of dataset a that has syllable information (d'oh!).
+# Include a path to the aligned output of preprocess_c to skip the alignment step if applicable.
+def preprocess_c(aligned_path=None):
+	from datetime import datetime
+	now = datetime.today().strftime('%Y-%m-%d-%H-%M-%S')
+	corpus = []
+	with open('Raw/c.txt') as c:
+		imbalanced_count = 0 # These words have too many phonemes, preventing 1-to-1 alignment. Must be pruned.
+		ending_in_schwa_count = 0
+		all_spellings = set() # Detect duplicates to skip.
+		for line in c:
+			line = line.lower().strip()
+			word, pronunciation = line.split('  ')
+			pronunciation = pronunciation.lstrip() # Sometimes, the separator was three spaces instead of two.
+
+			letters = ''
+			phonemes = ''
+			stresses = []
+			unaligned_boundary_buffer = [] 	# Indices of phonemes immediately after a syllable boundary.
+											# In other words, the VERY FIRST PHONEME of every syllable after the first. 
+											# (will be used to form syllable encodings post-alignment.)
+			# Load letters.
+			for ch in word:
+				# Skip words with punctuation. (Classic example is "A's," where changing to "As" changes its pronunciation.)
+				if ch not in alphabet:
+					continue
+				# Load word's letters.
+				letters += ch
+			# Skip duplicates.
+			if letters in all_spellings:
+				continue
+			all_spellings.add(letters)
+			# Load pronunciations.
+			current = ''
+			for ch in pronunciation:
+				if ch == '-':
+					# A dash means the VERY NEXT phoneme will be the start of a new syllable.
+					# What's more, we know exactly which index this prophesied phoneme will occupy:
+					unaligned_boundary_buffer.append(len(phonemes))
+				elif ch in ('0', '1', '2'):	# The current phoneme is about to end. Add the stress.
+					stresses += ch
+				elif ch == ' ' and current != '':		# The current phoneme just ended.
+					# Edge case: account for schwa, which is only implicitly defined in dataset c.
+					if current == 'ah' and stresses[-1] == '0':
+						phonemes += 'x'
+						current = ''
+						continue
+					# Regular case. Map to S&R representation and add to phonemes.
+					phonemes += phoneme_map[current]
+					current = ''
+				# Prevent spaces surrounding the syllable boundary characters from ruining the "current" buffer.
+				elif ch == ' ':
+					pass
+				else:
+					current += ch	# Phoneme currently being built.
+			# Add last phoneme.
+			if current == 'ah' and stresses[-1] == '0':
+				ending_in_schwa_count += 1
+				phonemes += 'x'
+				#print('Word {} that ended in schwa has been fixed to {}'.format(word, phonemes))
+				current = ''
+			else:
+				phonemes += phoneme_map[current]
+
+			# Handle unmapped phonemes.
+			# A bit on the theory: these extra phonemes help ascertain
+			# 1:1 mapping between letters and phonemes, preventing "null letters."
+			for key in unmapped.keys():
+				if key in phonemes:
+					old = phonemes
+					phonemes = phonemes.replace(key, unmapped[key])
+					#if key == 'Izxm':
+					#	print('Simplifying {} to {}'.format(old, phonemes))
+			# Ignore single-letter words.
+			if len(letters) == 1:
+				continue
+			# Ignore words who have fewer letters than phonemes.
+			if len(letters) < len(phonemes):
+				#print('Skipped {} {} because it has fewer letters than phonemes.'.format(letters, phonemes))
+				imbalanced_count += 1
+				continue
+			corpus.append(Word(letters, phonemes, stresses, unaligned_boundary_buffer))
+			#print('Phonemes {} have syllable boundaries after indices {}'.format(phonemes, corpus[-1].unaligned_boundary_buffer))
+			#print('Added {}, {}, and {} to corpus.'.format(letters, phonemes, stresses))
+		print('{} words had more phonemes than letters'.format(imbalanced_count))
+		print('{} words ending in schwa have been fixed.'.format(ending_in_schwa_count))
+	print('{} words added from c.'.format(len(corpus)))
+
+	if aligned_path == None:
+		out = []
+		# Align.
+		# See "Aligning Text and Phonemes for Speech Technology Applications Using an EM-Like Algorithm"
+		from align import Aligner
+		aligner = Aligner()
+		# This modifies words in the final wordlist in-place. 
+		aligner.align(corpus)
+		# Save aligned data to skip this step in the future.
+		for word in corpus:
+			out = word.append_self(out, include_encodings=False) # Encodings haven't been decided upon yet.
+
+		outpath = 'Out/c_aligned_{}.txt'.format(now)
+		with open(outpath, 'w', encoding='latin-1') as c:
+			c.writelines(out)
+			print('Saved file to {}'.format(outpath))
+	else:
+		loaded_alignment_dict = {}
+		with open(aligned_path, 'r', encoding='latin-1') as f:
+			# TODO: load aligned phonemes to dict to populate corpus.
+			for line in f:
+				letters, phonemes = line.split()
+				loaded_alignment_dict[letters] = phonemes
+		# For each word, update its alignment.
+		for word in corpus:
+			#print('{}, {}, {}, {}'.format(word.letters, word.phonemes, word.letters, loaded_alignment_dict[word.letters]))
+			word.phonemes = loaded_alignment_dict[word.letters]
+
+	# Now we need to readjust each words' indices of word boundaries.
+	final = []
+	for word in corpus:
+		successful_adjustment = word.adjust_boundary_indices()
+		successful_encoding = word.encode_boundaries_post_alignment()
+		if successful_adjustment and successful_encoding:
+			final.append(word)
+
+
+	out = []
+	for word in final:
+		out = word.append_self(out)
+	with open('Out/output_c_{}.txt'.format(now), 'w') as c:
+		c.writelines(out)
+	return final
 
 
 
-
-
-
-
+#combine_a_and_b()
+corpus = preprocess_c('Out/c_aligned_2023-11-11-08-17-52.txt')
 
 
 
