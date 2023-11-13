@@ -37,6 +37,7 @@ class Lattice:
 			self.intermediate_phonemes = intermediate_phonemes
 			self.to_node = to_node
 			self.count = 1
+			self.from_words = []
 			# Used to assemble what M&D call "path structure."
 			self.structure_component = (to_node.index - from_node.index)
 		def __eq__(self, other):
@@ -48,7 +49,7 @@ class Lattice:
 		def __ne__(self, other):
 			return not self.__eq__(other)
 		def __str__(self):
-			return '[{}:{}]'.format(self.intermediate_phonemes, self.count)
+			return '\n{}|{}|{}:{},\n(from words {})\n'.format(self.from_node.phoneme, self.intermediate_phonemes, self.to_node.phoneme, self.count, self.from_words)
 		def __hash__(self):
 			return hash((self.from_node, self.intermediate_phonemes, self.to_node))
 		# Accepts a list of nodes.
@@ -165,6 +166,8 @@ class Lattice:
 			print('Node {} has {} arcs into it and {} arcs out of it.'.format(node.matched_letter + node.phoneme + str(node.index), len(node.from_arcs), len(node.to_arcs)))
 	# Lists all paths via breadth-first search.
 	def find_all_paths(self, verbose = False):
+		print('Finding paths...')
+		#self.print_arcs()
 		import sys
 		min_length = sys.maxsize
 		
@@ -229,6 +232,7 @@ class Lattice:
 		if overflow:
 			print('Path threshold reached. Skipping.')
 			return SEARCHED_TOO_LONG
+		print('Paths found.')
 		return candidates
 
 	# Count identical pronunciations generating
@@ -471,20 +475,28 @@ class Lattice:
 
 		return results
 
+	def print_arcs(self):
+		print('ALL ARCS:')
+		for hsh in self.arcs:
+			print(str(self.arcs[hsh]))
+
 	def print(self):
 		self.find_all_paths(True)
 
-	def add(self, sub_letters, sub_phones, start_index):
+	def add(self, sub_letters, sub_phones, start_index, word=''):
 		def create_or_iterate_arc(inter, a, b):
+			nonlocal word
 			new = self.Arc(inter, a, b)
 			found = self.arcs.get(hash((inter, a, b)), None)
 			if found is not None: # Do not iterate start nodes. The only count the number of words that start and end with
 				found.count += 1 if not found.contains([self.START_NODE, self.END_NODE]) else 0 # this word's first and end letter.
+				found.from_words.append(word)
 				return found
 			self.arcs[hash((inter, a, b))] = new # Not found. Add new one.
 			found2 = self.arcs.get(hash((inter, a, b)), None)
 			a.to_arcs.append(new)
 			b.from_arcs.append(new)
+			new.from_words.append(word)
 			return new				# Return.
 			
 		def create_or_find_node(l, p, i):

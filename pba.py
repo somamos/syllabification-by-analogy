@@ -150,6 +150,7 @@ class PronouncerByAnalogy:
 		return results
 
 	def pronounce(self, input_word, trimmed_databases=None, verbose=False):
+		print('Building lattice...')
 		if not input_word.startswith('#'):
 			input_word = '#' + input_word
 		if not input_word.endswith('#'):
@@ -220,6 +221,7 @@ class PronouncerByAnalogy:
 		#        malignant  ->  malignant
 		def populate_precalculated():
 			def add_entry(substr_index_tuple, bigger_w, length_diff):
+				nonlocal entry_word
 				import re
 				substr, i = substr_index_tuple
 				indices_in_bigger = [m.start() for m in re.finditer('(?={})'.format(substr), bigger_w)]
@@ -229,10 +231,10 @@ class PronouncerByAnalogy:
 					if length_diff <= 0:
 						# The smaller word's starting index, then, is i, because of how input_precalculated_substrings are organized.
 						# Locate the indices in the entry word out of which to slice the phonemes.
-						self.pl.add(substr, phonemes[bigger_index : bigger_index + len(substr)], i)
+						self.pl.add(substr, phonemes[bigger_index : bigger_index + len(substr)], i, entry_word)
 					# Input word is the bigger word.
 					else:
-						self.pl.add(substr, phonemes[i : i + len(substr)], bigger_index)
+						self.pl.add(substr, phonemes[i : i + len(substr)], bigger_index, entry_word)
 			# TODO: Only match upon a break. That way,
 			# to,
 			# tor,
@@ -311,11 +313,11 @@ class PronouncerByAnalogy:
 		print('Ground truth: {}'.format(ground_truth))
 
 
-pba = PronouncerByAnalogy("Preprocessing\\Out\\output_c_2023-11-11-09-08-47.txt", wordlist_path="Preprocessing\\Out\\output_a.txt")
+pba = PronouncerByAnalogy("Preprocessing\\Out\\output_c_2023-11-11-09-08-47.txt")
 #pba.cross_validate_pronounce('merit', verbose=True)
 #results = pba.cross_validate_pronounce('mandatory', verbose=True)
 #pba.pronounce('uqauqauqauqauqauqa', verbose=True)
-#pba.cross_validate_pronounce('uqauqauqauqauqauqa', verbose=True)
-pba.cross_validate()
+pba.cross_validate_pronounce('supernaturally', verbose=True)
+#pba.cross_validate()
 
 
