@@ -32,7 +32,7 @@ Read more about their algorithm [here](https://github.com/somamos/syllabificatio
     - [X] Fix "silence problem" (flag bigrams unrepresented in the dataset).
     - [X] Call off search at a certain number of candidate paths reached during bfs.
     - [X] Refactor to prepare for syllabification (generalize Lattice).
-    - [ ] Bug fix: right-aligned substrings of substrings still count as duplicate matches. (tori -> ori -> ri). 
+    - [X] Bug fix: right-aligned substrings of substrings still count as duplicate matches. (tori -> ori -> ri). 
     - [ ] Threading at word level for cross validation.
     - [ ] Threading at "pattern matching" level.
     - [ ] Threading at BFS for the sake of long words (20+ characters).

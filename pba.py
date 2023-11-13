@@ -221,7 +221,7 @@ class PronouncerByAnalogy:
 		#        malignant  ->  malignant
 		def populate_precalculated():
 			def add_entry(substr_index_tuple, bigger_w, length_diff):
-				nonlocal entry_word
+				nonlocal entry_word # Pass this in for debug. 
 				import re
 				substr, i = substr_index_tuple
 				indices_in_bigger = [m.start() for m in re.finditer('(?={})'.format(substr), bigger_w)]
@@ -244,6 +244,7 @@ class PronouncerByAnalogy:
 			nonlocal input_word
 			nonlocal entry_word
 			nonlocal phonemes
+
 			length_difference = len(input_word) - len(entry_word)
 			# Input word is shorter.
 			if length_difference <= 0:
@@ -252,8 +253,9 @@ class PronouncerByAnalogy:
 			else:
 				smaller_words_substrings = substring_database[entry_word]
 				bigger_word = input_word
-
+			preserved_prev_substring_match = ''
 			NO_MATCH = ('', -1)
+		# PART 1: Prevent LEFT-ALIGNED substrings of matches, themselves, from matching.
 			# A tuple saving the previous match and its index.
 			# Due to the sorted order of (both input's and entries') precalculated substrings,
 			# A first NON-match often implies the previous substring DID match.
@@ -262,27 +264,51 @@ class PronouncerByAnalogy:
 			# tor,
 			# tori,
 			# we must only add items after the first nonmatch.
+		# PART 2: Prevent RIGHT-ALIGNED substrings of matches, themselves, from matching.
+			# The above fix does not prevent
+			# tori,
+			#  ori,
+			#   ri
+			# from matching.
+			# ['#l', '#la', '#lam', '#lamp', '#lamp#']
+			# ['la', 'lam', {lamp}, 'lamp#']
+			# [<am>, <amp>, 'amp#']
+			# [<mp>, 'mp#']
+			# ['p#']
+			# If the curly braced entry above matches,
+			# we must log the index of the match, k, say, and disregard  
+			prev_match_i_and_j = (0, 0)
+			# the next n rows' first k - n indices.
 			prev_matching_substring = NO_MATCH
 			for i, row in enumerate(smaller_words_substrings):
+				rows_since_last_match = i - prev_match_i_and_j[0]
 				for j, substring in enumerate(row):
 					if substring not in bigger_word:
 						# Ignore when NEVER had a match.
 						if prev_matching_substring == NO_MATCH:
 							break
-						# See "to, tor, tori" above for reasoning.
-						#print('{} is being added!'.format(prev_matching_substring))
+						# See PART 1 above for reasoning.
 						add_entry(prev_matching_substring, bigger_word, length_difference)
+						prev_match_i_and_j = i, j # see PART 2 above for reasoning.
+
 						# Flush the buffer so we know, upon loop end, whether the last remaining prev_match
 						# has been accounted for. (Imagine a scenario where the very last checked substring
 						# happens to perfectly match. In such cases, the "substring not in bigger_word" branch
 						# would never run. Therefore, we must check for prev_match after the loop as well.)
+						preserved_prev_substring_match = prev_matching_substring[0] # Preserve this for debug.
 						prev_matching_substring = NO_MATCH
 						# The above case also guarantees no more matches in this row.
 						break
-					else:
+					# Substring is in bigger word. As per PART 2 above,
+					# we must ascertain this current column "does not lie in a previous mask's shadow."
+					elif j >= (prev_match_i_and_j[1] - rows_since_last_match):
 						# Store this in the buffer to be added upon first lack of match.
 						prev_matching_substring = (substring, i)
 						#print('{} will be added later...'.format(prev_matching_substring))
+					else:
+						print('{}: Skipping substring "{}" as a right-aligned substring of the previous match, "{}"'.format( \
+							entry_word, substring, preserved_prev_substring_match))
+
 				if prev_matching_substring != NO_MATCH:
 					add_entry(prev_matching_substring, bigger_word, length_difference)
 		for entry_word in lexical_database:
@@ -313,11 +339,11 @@ class PronouncerByAnalogy:
 		print('Ground truth: {}'.format(ground_truth))
 
 
-pba = PronouncerByAnalogy("Preprocessing\\Out\\output_c_2023-11-11-09-08-47.txt")
+pba = PronouncerByAnalogy("Preprocessing/Out/output_c_2023-11-11-09-08-47.txt")
 #pba.cross_validate_pronounce('merit', verbose=True)
 #results = pba.cross_validate_pronounce('mandatory', verbose=True)
 #pba.pronounce('uqauqauqauqauqauqa', verbose=True)
-pba.cross_validate_pronounce('supernaturally', verbose=True)
+pba.cross_validate_pronounce('personification', verbose=True)
 #pba.cross_validate()
 
 

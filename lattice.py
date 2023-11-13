@@ -166,8 +166,8 @@ class Lattice:
 			print('Node {} has {} arcs into it and {} arcs out of it.'.format(node.matched_letter + node.phoneme + str(node.index), len(node.from_arcs), len(node.to_arcs)))
 	# Lists all paths via breadth-first search.
 	def find_all_paths(self, verbose = False):
-		print('Finding paths...')
 		#self.print_arcs()
+		print('Finding paths...')
 		import sys
 		min_length = sys.maxsize
 		
