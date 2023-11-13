@@ -21,6 +21,7 @@ Read more about their algorithm [here](https://github.com/somamos/syllabificatio
     - [ ] Allow for outputs that do not mix datasets A and B.
     - [ ] Allow for outputs from different sources.
     - [ ] Test the premise that inferring nucleus locations pre-alignment improves results. Is it smart to anchor nuclei so naively based on such simple rules? Or should we instead let alignment do its thing and determine the nucleus per syllable post-alignment (ditching mappings of multiple aligned nuclei per dataset-b-encoded syllable?)
+    - [ ] Build version of dataset c that only contains words from dataset a∩b.
 2. align.py
     - [X] Prioritize encodings' nucleus locations during alignment (list of index tuples?).
     - [X] Rewrite description of "suppression above the diagonal."
