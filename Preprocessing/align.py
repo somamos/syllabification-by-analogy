@@ -1,6 +1,6 @@
 # If you're visiting this page from the link in my resume, please check out the main repository,
 # as the scope of this project has expanded!
-# https://github.com/somamos/syllabification-by-analogy/edit/master/Preprocessing/align.py
+# https://github.com/somamos/syllabification-by-analogy/
 
 # A Python implementation of Damper & Marchand's "Aligning Text and Phonemes 
 #      for Speech Technology Applications Using an EM-Like Algorithm"
