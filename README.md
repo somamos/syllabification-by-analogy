@@ -21,6 +21,7 @@ Read more about their algorithm [here](https://github.com/somamos/syllabificatio
     - [ ] Allow for outputs that do not mix datasets A and B.
     - [ ] Allow for outputs from different sources.
     - [ ] Test the premise that inferring nucleus locations pre-alignment improves results. Is it smart to anchor nuclei so naively based on such simple rules? Or should we instead let alignment do its thing and determine the nucleus per syllable post-alignment (ditching mappings of multiple aligned nuclei per dataset-b-encoded syllable?)
+    - [ ] Build version of dataset c that only contains words from dataset a∩b.
 2. align.py
     - [X] Prioritize encodings' nucleus locations during alignment (list of index tuples?).
     - [X] Rewrite description of "suppression above the diagonal."
@@ -31,11 +32,15 @@ Read more about their algorithm [here](https://github.com/somamos/syllabificatio
     - [X] Fix "silence problem" (flag bigrams unrepresented in the dataset).
     - [X] Call off search at a certain number of candidate paths reached during bfs.
     - [X] Refactor to prepare for syllabification (generalize Lattice).
+    - [ ] Bug fix: right-aligned substrings of substrings still count as duplicate matches. (tori -> ori -> ri). 
+    - [ ] Threading at word level for cross validation.
+    - [ ] Threading at "pattern matching" level.
+    - [ ] Threading at BFS for the sake of long words (20+ characters).
     - [ ] Write a convenient way to compare two datasets' results.
     - [ ] Track the worst-performing input letters, output phonemes, and most challenging ground truth phonemes. 
 4. sba.py
     - [X] Add sba (split encodings by syllable).
-    - [ ] Evaluate sba results.
+    - [X] Evaluate sba results.
 
 # Overview
  
