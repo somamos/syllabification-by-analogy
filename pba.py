@@ -264,6 +264,7 @@ class PronouncerByAnalogy:
 			# tor,
 			# tori,
 			# we must only add items after the first nonmatch.
+			prev_matching_substring = NO_MATCH
 		# PART 2: Prevent RIGHT-ALIGNED substrings of matches, themselves, from matching.
 			# The above fix does not prevent
 			# tori,
@@ -277,9 +278,8 @@ class PronouncerByAnalogy:
 			# ['p#']
 			# If the curly braced entry above matches,
 			# we must log the index of the match, k, say, and disregard  
-			prev_match_i_and_j = (0, 0)
 			# the next n rows' first k - n indices.
-			prev_matching_substring = NO_MATCH
+			prev_match_i_and_j = (0, 0)
 			for i, row in enumerate(smaller_words_substrings):
 				rows_since_last_match = i - prev_match_i_and_j[0]
 				for j, substring in enumerate(row):
