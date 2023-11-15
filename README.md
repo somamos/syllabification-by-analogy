@@ -32,10 +32,10 @@ Read more about their algorithm [here](https://github.com/somamos/syllabificatio
     - [X] Fix "silence problem" (flag bigrams unrepresented in the dataset).
     - [X] Call off search at a certain number of candidate paths reached during bfs.
     - [X] Refactor to prepare for syllabification (generalize Lattice).
-    - [X] Bug fix: right-aligned substrings of substrings still count as duplicate matches. (tori -> ori -> ri). 
-    - [ ] Threading at word level for cross validation.
-    - [ ] Threading at "pattern matching" level.
-    - [ ] Threading at BFS for the sake of long words (20+ characters).
+    - [X] Bug fix: right-aligned substrings of substrings still count as duplicate matches. (tori -> ori -> ri).
+    - [ ] Multiprocessing at word level for cross validation.
+    - [ ] Multiprocessing at "pattern matching" level.
+    - [ ] Multiprocessing at BFS for long words (20+ characters).
     - [ ] Write a convenient way to compare two datasets' results.
     - [ ] Track the worst-performing input letters, output phonemes, and most challenging ground truth phonemes. 
 4. sba.py
