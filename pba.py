@@ -294,9 +294,32 @@ class PronouncerByAnalogy:
 						# When the entry word is smaller, matched indices "shift right" to remain accurate.
 						matches.append((match, phonemes[index : index + length], index + offset, entry_word))
 		return matches
+
+	# A group of words to be run by a single process.
+	# Assumes legacy method if three arguments are passed, else uses precalculated.
+	@staticmethod
+	def populate_batch(input_word, entry_dict_batch, substrings_dict_batch=None):
+		func = PronouncerByAnalogy.populate_legacy
+		if substrings_dict_batch != None:
+			func = PronouncerByAnalogy.populate_precalculated
+		matches = []
+		for entry_word in entry_dict_batch:
+			if substrings_dict_batch == None:
+				matches += func(input_word, entry_word, entry_dict_batch[entry_word])
+			else:
+				matches += func(input_word, entry_word, entry_dict_batch[entry_word], substrings_dict_batch[entry_word])
+		return matches
+
 	def pronounce(self, input_word, trimmed_databases=None, verbose=False):
 		import time
+		import math
 		import multiprocessing as mp
+		from itertools import islice
+		# Chunking dicts courtesy https://stackoverflow.com/a/66555740/12572922
+		def chunks(data, SIZE=10000):
+			it = iter(data)
+			for i in range(0, len(data), SIZE):
+				yield {k:data[k] for k in islice(it, SIZE)}
 		print('Building lattice...')
 		if not input_word.startswith('#'):
 			input_word = '#' + input_word
@@ -323,14 +346,15 @@ class PronouncerByAnalogy:
 
 	# VERSION WITH MULTIPROCESSING					
 		# Spawns multiple processes for matching patterns within the lexical database.
-		pool = mp.Pool(processes=mp.cpu_count())
+		num_processes = mp.cpu_count()
+		pool = mp.Pool(processes=num_processes)
 		# Legacy method
 		#list_of_lists_of_matches = pool.starmap(PronouncerByAnalogy.populate_legacy, \
 		#	[ (input_word, entry_word, lexical_database[entry_word]) for entry_word in lexical_database])
 		# Better method
-		list_of_lists_of_matches = pool.starmap(PronouncerByAnalogy.populate_precalculated, \
-			[(input_word, entry_word, lexical_database[entry_word], substring_database[entry_word]) \
-			for entry_word in lexical_database])
+		processes = [pool.apply_async(PronouncerByAnalogy.populate_batch, args=(input_word, lexical_subset)) for lexical_subset in \
+		chunks(lexical_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
+		list_of_lists_of_matches = [p.get() for p in processes]
 		matches = [item for sublist in list_of_lists_of_matches for item in sublist]
 		for match in matches:
 			if match == []:
@@ -340,9 +364,9 @@ class PronouncerByAnalogy:
 		#for entry_word in lexical_database:
 		#	phonemes = lexical_database[entry_word] 
 		#	substrings = substring_database[entry_word]
-			# Better method
+		#	# Better method
 		#	matches = PronouncerByAnalogy.populate_precalculated(input_word, entry_word, phonemes, substrings)
-			# Legacy method
+		#	# Legacy method
 		#	matches = PronouncerByAnalogy.populate_legacy(input_word, entry_word, phonemes)
 		#	for match in matches:
 		#		self.pl.add(*match)
@@ -378,7 +402,7 @@ if __name__ == "__main__":
 	#pba.cross_validate_pronounce('merit', verbose=True)
 	#results = pba.cross_validate_pronounce('mandatory', verbose=True)
 	#pba.pronounce('uqauqauqauqauqauqa', verbose=True)
-	pba.cross_validate_pronounce('catch', verbose=True)
+	pba.cross_validate_pronounce('testing', verbose=True)
 	#pba.cross_validate()
 
 
