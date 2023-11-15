@@ -171,7 +171,6 @@ class PronouncerByAnalogy:
 		# Bigrams unrepresented in the dataset will cause gaps in lattice paths.
 		self.pl.flag_unrepresented_bigrams(input_word, lexical_database)
 
-		# Second fastest.
 		# The original method of Dedina and Nusbaum. Words begin left-aligned and end right-aligned.
 		def populate_legacy():
 			nonlocal input_word
@@ -211,7 +210,6 @@ class PronouncerByAnalogy:
 							self.pl.add(match, phonemes[index : index + length], index + offset)
 		# Maps every possible substring greater than length 2 to their first index of occurrence
 		# in order, conveniently, from smallest to largest (per starting index).
-		input_precalculated_substrings = [[input_word[i:j] for j in range(i, len(input_word) + 1) if j - i > 1] for i in range(0, len(input_word) + 1)]
 		# Every word has their substrings precalculated. Search for the smaller word
 		# in the larger word. This is the equivalent to Marchand & Damper's improvement
 		# of beginning with the end of the shorter word aligned with the start of the longer word,
@@ -240,7 +238,6 @@ class PronouncerByAnalogy:
 			# tor,
 			# tori,
 			# these substrings won't get double counted.
-			nonlocal input_precalculated_substrings
 			nonlocal input_word
 			nonlocal entry_word
 			nonlocal phonemes
@@ -248,7 +245,9 @@ class PronouncerByAnalogy:
 			length_difference = len(input_word) - len(entry_word)
 			# Input word is shorter.
 			if length_difference <= 0:
-				smaller_words_substrings = input_precalculated_substrings
+				smaller_words_substrings = [[input_word[i:j] for j in range(i, len(input_word) + 1) \
+					if j - i > 1] for i in range(0, len(input_word) + 1)]
+
 				bigger_word = entry_word
 			else:
 				smaller_words_substrings = substring_database[entry_word]
@@ -276,9 +275,8 @@ class PronouncerByAnalogy:
 			# [<am>, <amp>, 'amp#']
 			# [<mp>, 'mp#']
 			# ['p#']
-			# If the curly braced entry above matches,
-			# we must log the index of the match, k, say, and disregard  
-			# the next n rows' first k - n indices.
+			# If the curly braced entry above matches, (but the one after it doesn't, meaning we're comparing it to, say, "lamprey")
+			# we must log the index of the match, k, say, and disregard the next n rows' first k - n indices.
 			prev_match_i_and_j = (0, 0)
 			for i, row in enumerate(smaller_words_substrings):
 				rows_since_last_match = i - prev_match_i_and_j[0]
@@ -306,15 +304,16 @@ class PronouncerByAnalogy:
 						prev_matching_substring = (substring, i)
 						#print('{} will be added later...'.format(prev_matching_substring))
 					else:
-						print('{}: Skipping substring "{}" as a right-aligned substring of the previous match, "{}"'.format( \
-							entry_word, substring, preserved_prev_substring_match))
+						pass
+						#print('{}: Skipping substring "{}" as a right-aligned substring of the previous match, "{}"'.format( \
+						#	entry_word, substring, preserved_prev_substring_match))
 
 				if prev_matching_substring != NO_MATCH:
 					add_entry(prev_matching_substring, bigger_word, length_difference)
 		for entry_word in lexical_database:
 			phonemes = lexical_database[entry_word]
-			populate_precalculated()
-			#populate_legacy()
+			#populate_precalculated()
+			populate_legacy()
 		candidates = self.pl.find_all_paths()
 		results = self.pl.decide(candidates)
 		# Print with no regard for ground truth.
@@ -343,7 +342,7 @@ pba = PronouncerByAnalogy("Preprocessing/Out/output_c_2023-11-11-09-08-47.txt")
 #pba.cross_validate_pronounce('merit', verbose=True)
 #results = pba.cross_validate_pronounce('mandatory', verbose=True)
 #pba.pronounce('uqauqauqauqauqauqa', verbose=True)
-pba.cross_validate_pronounce('personification', verbose=True)
+pba.cross_validate_pronounce('catch', verbose=True)
 #pba.cross_validate()
 
 
