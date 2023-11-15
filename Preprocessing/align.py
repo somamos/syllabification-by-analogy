@@ -164,8 +164,6 @@ class Aligner:
 			# Discourage injecting an unreasonable number of null phonemes.
 			for i, i_v in enumerate(word.letters):
 				for j, j_v in enumerate(word.phonemes):
-					# Words like 'knowledge', 'psychology', 'gnome', and 'pterodactyl' are very rare,
-					# and in e.g. the lattermost case, "t" should easily overcome the dampening to surpass "p".
 					suppression_factor = math.pow(abs( 1 / (max (0, j - i ) + 1 ) ), 3)
 					# dampening amounts to, for e.g. dimension 6 x 6 (Not to scale)
 					#     l    E    t    -    R    -
