@@ -149,8 +149,115 @@ class PronouncerByAnalogy:
 
 		return results
 
-	# The original method of Dedina and Nusbaum. Words begin left-aligned and end right-aligned.
+	# Search for matches of the smaller word within the larger word. "precaculated" refers to
+	# all of entry word's substrings, passed in as entry_substrings.
+	# This is the equivalent to Marchand & Damper's improvement:
+	#   beginning with the end of the shorter word aligned with the start of the longer word, and 
+	#   ending with the start of the shorter word aligned with the end of the longer word.
+	# 
+	#        FROM       ->           TO
+	# alignment|||||||  ->  |||||||alignment
+	# |||||||malignant  ->  malignant|||||||
+	# 
 	# Returns matches, a list of tuples representing matching substrings to add to the lattice.
+	@staticmethod
+	def populate_precalculated(input_word, entry_word, phonemes, entry_substrings):
+		matches = []
+		def add_entry(substr_index_tuple, bigger_w, length_diff):
+			import re
+			substr, i = substr_index_tuple
+			indices_in_bigger = [m.start() for m in re.finditer('(?={})'.format(substr), bigger_w)]
+			# Add to the lattice.
+			for bigger_index in indices_in_bigger:
+				# Entry word is the bigger word.
+				if length_diff <= 0:
+					# The smaller word's starting index, then, is i, because of how input_precalculated_substrings are organized.
+					# Locate the indices in the entry word out of which to slice the phonemes.
+					matches.append((substr, phonemes[bigger_index : bigger_index + len(substr)], i, entry_word))
+				# Input word is the bigger word.
+				else:
+					matches.append((substr, phonemes[i : i + len(substr)], bigger_index, entry_word))
+
+		length_difference = len(input_word) - len(entry_word)
+		# Input word is shorter.
+		if length_difference <= 0:
+			# Maps every possible substring greater than length 2 to their first index of occurrence
+			# in order, conveniently, from smallest to largest (per starting index), i.e.:
+			# in, ind, inde, index
+			# nd, nde, ndex,
+			# de, dex
+			# ex
+			# Much of the logic that follows hinges upon this ordering.
+			smaller_words_substrings = [[input_word[i:j] for j in range(i, len(input_word) + 1) \
+				if j - i > 1] for i in range(0, len(input_word) + 1)]
+
+			bigger_word = entry_word
+		else:
+			# entry_substrings were precalculated and are ordered as smaller_words_substrings above.
+			smaller_words_substrings = entry_substrings
+			bigger_word = input_word
+		preserved_prev_substring_match = ''
+		NO_MATCH = ('', -1)
+		# PART 1: Prevent LEFT-ALIGNED substrings of matches, themselves, from matching.
+			# A tuple saving the previous match and its index.
+			# Due to the sorted order of (both input's and entries') precalculated substrings,
+			# A first NON-match often implies the previous substring DID match.
+			# To avoid double counting smaller sections of the same substring e.g.:
+			# to,
+			# tor,
+			# tori,
+			# we must only add items after the first nonmatch.
+		prev_matching_substring = NO_MATCH
+		# PART 2: Prevent RIGHT-ALIGNED substrings of matches, themselves, from matching.
+			# The above fix does not prevent
+			# tori,
+			#  ori,
+			#   ri
+			# from matching.
+			# ['#l', '#la', '#lam', '#lamp', '#lamp#']
+			# ['la', 'lam', {lamp}, 'lamp#']
+			# [<am>, <amp>, 'amp#']
+			# [<mp>, 'mp#']
+			# ['p#']
+			# If the curly braced entry above matches, (but the one after it doesn't, meaning we're comparing it to, say, "lamprey")
+			# we must log the index of the match, k, say, and disregard the next n rows' first k - n indices.
+		prev_match_i_and_j = (0, 0)
+		for i, row in enumerate(smaller_words_substrings):
+			rows_since_last_match = i - prev_match_i_and_j[0]
+			for j, substring in enumerate(row):
+				if substring not in bigger_word:
+					# Ignore when NEVER had a match.
+					if prev_matching_substring == NO_MATCH:
+						break
+					# See PART 1 above for reasoning.
+					add_entry(prev_matching_substring, bigger_word, length_difference)
+					prev_match_i_and_j = i, j # see PART 2 above for reasoning.
+
+					# Flush the buffer so we know, upon loop end, whether the last remaining prev_match
+					# has been accounted for. (Imagine a scenario where the very last checked substring
+					# happens to perfectly match. In such cases, the "substring not in bigger_word" branch
+					# would never run. Therefore, we must check for prev_match after the loop as well.)
+					preserved_prev_substring_match = prev_matching_substring[0] # Preserve this for debug.
+					prev_matching_substring = NO_MATCH
+					# The above case also guarantees no more matches in this row.
+					break
+				# Substring is in bigger word. As per PART 2 above,
+				# we must ascertain this current column "does not lie in a previous mask's shadow."
+				elif j >= (prev_match_i_and_j[1] - rows_since_last_match):
+					# Store this in the buffer to be added upon first lack of match.
+					prev_matching_substring = (substring, i)
+					#print('{} will be added later...'.format(prev_matching_substring))
+				else:
+					pass
+					#print('{}: Skipping substring "{}" as a right-aligned substring of the previous match, "{}"'.format( \
+					#	entry_word, substring, preserved_prev_substring_match))
+
+			if prev_matching_substring != NO_MATCH:
+				add_entry(prev_matching_substring, bigger_word, length_difference)
+		return matches
+	# The original method of Dedina and Nusbaum. Words begin left-aligned and end right-aligned.
+	# Given some word (input_word) we wish to pronounce alongside some entry_word and its phonemes,
+	# Return matches, a list of tuples representing matching substrings to add to the lattice.
 	@staticmethod
 	def populate_legacy(input_word, entry_word, phonemes):
 		matches = []
@@ -182,10 +289,10 @@ class PronouncerByAnalogy:
 						continue
 					if length_difference < 0:
 						# When the entry word is bigger, phoneme indices "shift right" to remain accurate.
-						matches.append((match, phonemes[index + offset : index + offset + length], index))
+						matches.append((match, phonemes[index + offset : index + offset + length], index, entry_word))
 					else:
 						# When the entry word is smaller, matched indices "shift right" to remain accurate.
-						matches.append((match, phonemes[index : index + length], index + offset))
+						matches.append((match, phonemes[index : index + length], index + offset, entry_word))
 		return matches
 	def pronounce(self, input_word, trimmed_databases=None, verbose=False):
 		import time
@@ -211,107 +318,19 @@ class PronouncerByAnalogy:
 		# Bigrams unrepresented in the dataset will cause gaps in lattice paths.
 		self.pl.flag_unrepresented_bigrams(input_word, lexical_database)
 
-		# Maps every possible substring greater than length 2 to their first index of occurrence
-		# in order, conveniently, from smallest to largest (per starting index).
-		# Every word has their substrings precalculated. Search for the smaller word
-		# in the larger word. This is the equivalent to Marchand & Damper's improvement
-		# of beginning with the end of the shorter word aligned with the start of the longer word,
-		# ending with the start of the shorter word aligned with the end of the longer word, E.G.:
-		#        FROM       ->           TO
-		# alignment         ->         alignment
-		#        malignant  ->  malignant
-		def populate_precalculated(input_word, entry_word, phonemes):
-			def add_entry(substr_index_tuple, bigger_w, length_diff):
-				nonlocal entry_word # Pass this in for debug. 
-				import re
-				substr, i = substr_index_tuple
-				indices_in_bigger = [m.start() for m in re.finditer('(?={})'.format(substr), bigger_w)]
-				# Add to the lattice.
-				for bigger_index in indices_in_bigger:
-					# Entry word is the bigger word.
-					if length_diff <= 0:
-						# The smaller word's starting index, then, is i, because of how input_precalculated_substrings are organized.
-						# Locate the indices in the entry word out of which to slice the phonemes.
-						self.pl.add(substr, phonemes[bigger_index : bigger_index + len(substr)], i, entry_word)
-					# Input word is the bigger word.
-					else:
-						self.pl.add(substr, phonemes[i : i + len(substr)], bigger_index, entry_word)
-
-			length_difference = len(input_word) - len(entry_word)
-			# Input word is shorter.
-			if length_difference <= 0:
-				smaller_words_substrings = [[input_word[i:j] for j in range(i, len(input_word) + 1) \
-					if j - i > 1] for i in range(0, len(input_word) + 1)]
-
-				bigger_word = entry_word
-			else:
-				smaller_words_substrings = substring_database[entry_word]
-				bigger_word = input_word
-			preserved_prev_substring_match = ''
-			NO_MATCH = ('', -1)
-		# PART 1: Prevent LEFT-ALIGNED substrings of matches, themselves, from matching.
-			# A tuple saving the previous match and its index.
-			# Due to the sorted order of (both input's and entries') precalculated substrings,
-			# A first NON-match often implies the previous substring DID match.
-			# To avoid double counting smaller sections of the same substring e.g.:
-			# to,
-			# tor,
-			# tori,
-			# we must only add items after the first nonmatch.
-			prev_matching_substring = NO_MATCH
-		# PART 2: Prevent RIGHT-ALIGNED substrings of matches, themselves, from matching.
-			# The above fix does not prevent
-			# tori,
-			#  ori,
-			#   ri
-			# from matching.
-			# ['#l', '#la', '#lam', '#lamp', '#lamp#']
-			# ['la', 'lam', {lamp}, 'lamp#']
-			# [<am>, <amp>, 'amp#']
-			# [<mp>, 'mp#']
-			# ['p#']
-			# If the curly braced entry above matches, (but the one after it doesn't, meaning we're comparing it to, say, "lamprey")
-			# we must log the index of the match, k, say, and disregard the next n rows' first k - n indices.
-			prev_match_i_and_j = (0, 0)
-			for i, row in enumerate(smaller_words_substrings):
-				rows_since_last_match = i - prev_match_i_and_j[0]
-				for j, substring in enumerate(row):
-					if substring not in bigger_word:
-						# Ignore when NEVER had a match.
-						if prev_matching_substring == NO_MATCH:
-							break
-						# See PART 1 above for reasoning.
-						add_entry(prev_matching_substring, bigger_word, length_difference)
-						prev_match_i_and_j = i, j # see PART 2 above for reasoning.
-
-						# Flush the buffer so we know, upon loop end, whether the last remaining prev_match
-						# has been accounted for. (Imagine a scenario where the very last checked substring
-						# happens to perfectly match. In such cases, the "substring not in bigger_word" branch
-						# would never run. Therefore, we must check for prev_match after the loop as well.)
-						preserved_prev_substring_match = prev_matching_substring[0] # Preserve this for debug.
-						prev_matching_substring = NO_MATCH
-						# The above case also guarantees no more matches in this row.
-						break
-					# Substring is in bigger word. As per PART 2 above,
-					# we must ascertain this current column "does not lie in a previous mask's shadow."
-					elif j >= (prev_match_i_and_j[1] - rows_since_last_match):
-						# Store this in the buffer to be added upon first lack of match.
-						prev_matching_substring = (substring, i)
-						#print('{} will be added later...'.format(prev_matching_substring))
-					else:
-						pass
-						#print('{}: Skipping substring "{}" as a right-aligned substring of the previous match, "{}"'.format( \
-						#	entry_word, substring, preserved_prev_substring_match))
-
-				if prev_matching_substring != NO_MATCH:
-					add_entry(prev_matching_substring, bigger_word, length_difference)
-
 		time_before = time.perf_counter()
+	# Populate lattice.
+
 	# VERSION WITH MULTIPROCESSING					
 		# Spawns multiple processes for matching patterns within the lexical database.
 		pool = mp.Pool(processes=mp.cpu_count())
-		list_of_lists_of_matches = pool.starmap(PronouncerByAnalogy.populate_legacy, \
-			[ (input_word, key, lexical_database[key]) for key in lexical_database])
+		# Legacy method
+		#list_of_lists_of_matches = pool.starmap(PronouncerByAnalogy.populate_legacy, \
+		#	[ (input_word, entry_word, lexical_database[entry_word]) for entry_word in lexical_database])
+		# Better method
+		list_of_lists_of_matches = pool.starmap(PronouncerByAnalogy.populate_precalculated, \
+			[(input_word, entry_word, lexical_database[entry_word], substring_database[entry_word]) \
+			for entry_word in lexical_database])
 		matches = [item for sublist in list_of_lists_of_matches for item in sublist]
 		for match in matches:
 			if match == []:
@@ -319,11 +338,15 @@ class PronouncerByAnalogy:
 			self.pl.add(*match)
 	# VERSION WITHOUT MULTIPROCESSING
 		#for entry_word in lexical_database:
-		#	phonemes = lexical_database[entry_word]
-		#	#populate_precalculated()
+		#	phonemes = lexical_database[entry_word] 
+		#	substrings = substring_database[entry_word]
+			# Better method
+		#	matches = PronouncerByAnalogy.populate_precalculated(input_word, entry_word, phonemes, substrings)
+			# Legacy method
 		#	matches = PronouncerByAnalogy.populate_legacy(input_word, entry_word, phonemes)
 		#	for match in matches:
 		#		self.pl.add(*match)
+
 		time_after = time.perf_counter()
 		print('Completed in {} seconds'.format(time_after - time_before))
 
