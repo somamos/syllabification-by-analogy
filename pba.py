@@ -149,7 +149,47 @@ class PronouncerByAnalogy:
 
 		return results
 
+	# The original method of Dedina and Nusbaum. Words begin left-aligned and end right-aligned.
+	# Returns matches, a list of tuples representing matching substrings to add to the lattice.
+	@staticmethod
+	def populate_legacy(input_word, entry_word, phonemes):
+		matches = []
+		length_difference = len(input_word) - len(entry_word)
+		# a is always the longer word.
+		a, b = (input_word, entry_word) if length_difference >= 0 else (entry_word, input_word)
+		for offset in range(abs(length_difference) + 1):
+			index = -1
+			length = 0
+			match = ''
+			char_buffer = [False, False]
+			for k in range(0, len(b) + 1):
+				# Iterate buffer.
+				char_buffer[0] = char_buffer[1] # Begin False (default).
+				char_buffer[1] = (b[k] == a[offset + k]) if k != len(b) else False # End False.
+				# Currently in the middle of a match.
+				if all(char_buffer):
+					length += 1
+					match += b[k] # Append to match.
+				# Match just started.
+				elif char_buffer == [False, True]:
+					index = k
+					length = 1
+					match = b[k] # Flush match.
+				# Match just ended.
+				elif char_buffer == [True, False]:
+					# Insufficient length.
+					if length == 1:
+						continue
+					if length_difference < 0:
+						# When the entry word is bigger, phoneme indices "shift right" to remain accurate.
+						matches.append((match, phonemes[index + offset : index + offset + length], index))
+					else:
+						# When the entry word is smaller, matched indices "shift right" to remain accurate.
+						matches.append((match, phonemes[index : index + length], index + offset))
+		return matches
 	def pronounce(self, input_word, trimmed_databases=None, verbose=False):
+		import time
+		import multiprocessing as mp
 		print('Building lattice...')
 		if not input_word.startswith('#'):
 			input_word = '#' + input_word
@@ -171,43 +211,6 @@ class PronouncerByAnalogy:
 		# Bigrams unrepresented in the dataset will cause gaps in lattice paths.
 		self.pl.flag_unrepresented_bigrams(input_word, lexical_database)
 
-		# The original method of Dedina and Nusbaum. Words begin left-aligned and end right-aligned.
-		def populate_legacy():
-			nonlocal input_word
-			nonlocal entry_word
-			nonlocal phonemes
-			length_difference = len(input_word) - len(entry_word)
-			# a is always the longer word.
-			a, b = (input_word, entry_word) if length_difference >= 0 else (entry_word, input_word)
-			for offset in range(abs(length_difference) + 1):
-				index = -1
-				length = 0
-				match = ''
-				char_buffer = [False, False]
-				for k in range(0, len(b) + 1):
-					# Iterate buffer.
-					char_buffer[0] = char_buffer[1] # Begin False (default).
-					char_buffer[1] = (b[k] == a[offset + k]) if k != len(b) else False # End False.
-					# Currently in the middle of a match.
-					if all(char_buffer):
-						length += 1
-						match += b[k] # Append to match.
-					# Match just started.
-					elif char_buffer == [False, True]:
-						index = k
-						length = 1
-						match = b[k] # Flush match.
-					# Match just ended.
-					elif char_buffer == [True, False]:
-						# Insufficient length.
-						if length == 1:
-							continue
-						if length_difference < 0:
-							# When the entry word is bigger, phoneme indices "shift right" to remain accurate.
-							self.pl.add(match, phonemes[index + offset : index + offset + length], index)
-						else:
-							# When the entry word is smaller, matched indices "shift right" to remain accurate.
-							self.pl.add(match, phonemes[index : index + length], index + offset)
 		# Maps every possible substring greater than length 2 to their first index of occurrence
 		# in order, conveniently, from smallest to largest (per starting index).
 		# Every word has their substrings precalculated. Search for the smaller word
@@ -217,7 +220,7 @@ class PronouncerByAnalogy:
 		#        FROM       ->           TO
 		# alignment         ->         alignment
 		#        malignant  ->  malignant
-		def populate_precalculated():
+		def populate_precalculated(input_word, entry_word, phonemes):
 			def add_entry(substr_index_tuple, bigger_w, length_diff):
 				nonlocal entry_word # Pass this in for debug. 
 				import re
@@ -233,14 +236,6 @@ class PronouncerByAnalogy:
 					# Input word is the bigger word.
 					else:
 						self.pl.add(substr, phonemes[i : i + len(substr)], bigger_index, entry_word)
-			# TODO: Only match upon a break. That way,
-			# to,
-			# tor,
-			# tori,
-			# these substrings won't get double counted.
-			nonlocal input_word
-			nonlocal entry_word
-			nonlocal phonemes
 
 			length_difference = len(input_word) - len(entry_word)
 			# Input word is shorter.
@@ -310,10 +305,28 @@ class PronouncerByAnalogy:
 
 				if prev_matching_substring != NO_MATCH:
 					add_entry(prev_matching_substring, bigger_word, length_difference)
-		for entry_word in lexical_database:
-			phonemes = lexical_database[entry_word]
-			#populate_precalculated()
-			populate_legacy()
+
+		time_before = time.perf_counter()
+	# VERSION WITH MULTIPROCESSING					
+		# Spawns multiple processes for matching patterns within the lexical database.
+		pool = mp.Pool(processes=mp.cpu_count())
+		list_of_lists_of_matches = pool.starmap(PronouncerByAnalogy.populate_legacy, \
+			[ (input_word, key, lexical_database[key]) for key in lexical_database])
+		matches = [item for sublist in list_of_lists_of_matches for item in sublist]
+		for match in matches:
+			if match == []:
+				continue
+			self.pl.add(*match)
+	# VERSION WITHOUT MULTIPROCESSING
+		#for entry_word in lexical_database:
+		#	phonemes = lexical_database[entry_word]
+		#	#populate_precalculated()
+		#	matches = PronouncerByAnalogy.populate_legacy(input_word, entry_word, phonemes)
+		#	for match in matches:
+		#		self.pl.add(*match)
+		time_after = time.perf_counter()
+		print('Completed in {} seconds'.format(time_after - time_before))
+
 		candidates = self.pl.find_all_paths()
 		results = self.pl.decide(candidates)
 		# Print with no regard for ground truth.
@@ -337,12 +350,12 @@ class PronouncerByAnalogy:
 			print('{}: {}, {}'.format(result, results[result], evaluation))
 		print('Ground truth: {}'.format(ground_truth))
 
-
-pba = PronouncerByAnalogy("Preprocessing/Out/output_c_2023-11-11-09-08-47.txt")
-#pba.cross_validate_pronounce('merit', verbose=True)
-#results = pba.cross_validate_pronounce('mandatory', verbose=True)
-#pba.pronounce('uqauqauqauqauqauqa', verbose=True)
-pba.cross_validate_pronounce('catch', verbose=True)
-#pba.cross_validate()
+if __name__ == "__main__":
+	pba = PronouncerByAnalogy("Preprocessing/Out/output_c_2023-11-11-09-08-47.txt")
+	#pba.cross_validate_pronounce('merit', verbose=True)
+	#results = pba.cross_validate_pronounce('mandatory', verbose=True)
+	#pba.pronounce('uqauqauqauqauqauqa', verbose=True)
+	pba.cross_validate_pronounce('catch', verbose=True)
+	#pba.cross_validate()
 
 
