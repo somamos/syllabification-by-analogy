@@ -314,12 +314,6 @@ class PronouncerByAnalogy:
 		import time
 		import math
 		import multiprocessing as mp
-		from itertools import islice
-		# Chunking dicts courtesy https://stackoverflow.com/a/66555740/12572922
-		def chunks(data, SIZE=10000):
-			it = iter(data)
-			for i in range(0, len(data), SIZE):
-				yield {k:data[k] for k in islice(it, SIZE)}
 		print('Building lattice...')
 		if not input_word.startswith('#'):
 			input_word = '#' + input_word
@@ -345,15 +339,32 @@ class PronouncerByAnalogy:
 	# Populate lattice.
 
 	# VERSION WITH MULTIPROCESSING					
+		from itertools import islice
+		# Chunking dicts courtesy https://stackoverflow.com/a/66555740/12572922
+		def chunks(data, data2=None, SIZE=10000):
+			it1 = iter(data)
+			if data2==None:
+				yield {k:data[k] for k in islice(it1, SIZE)}
+				return
+
+			it2 = iter(data2)
+			for i in range(0, len(data), SIZE):
+				yield {k:data[k] for k in islice(it1, SIZE)}, {k:data2[k] for k in islice(it2, SIZE)}
 		# Spawns multiple processes for matching patterns within the lexical database.
 		num_processes = mp.cpu_count()
 		pool = mp.Pool(processes=num_processes)
 		# Legacy method
-		#list_of_lists_of_matches = pool.starmap(PronouncerByAnalogy.populate_legacy, \
-		#	[ (input_word, entry_word, lexical_database[entry_word]) for entry_word in lexical_database])
-		# Better method
-		processes = [pool.apply_async(PronouncerByAnalogy.populate_batch, args=(input_word, lexical_subset)) for lexical_subset in \
-		chunks(lexical_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
+
+		processes = [pool.apply_async(PronouncerByAnalogy.populate_batch, args=( \
+			input_word, lexical_subset)) \
+		for lexical_subset in chunks(lexical_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
+
+		# Better method (unfortunately does not benefit from multiprocessing.)
+
+		#processes = [pool.apply_async(PronouncerByAnalogy.populate_batch, args=( \
+		#	input_word, lexical_subset, substring_subset)) \
+		#for lexical_subset, substring_subset in chunks(lexical_database, substring_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
+
 		list_of_lists_of_matches = [p.get() for p in processes]
 		matches = [item for sublist in list_of_lists_of_matches for item in sublist]
 		for match in matches:
@@ -402,7 +413,7 @@ if __name__ == "__main__":
 	#pba.cross_validate_pronounce('merit', verbose=True)
 	#results = pba.cross_validate_pronounce('mandatory', verbose=True)
 	#pba.pronounce('uqauqauqauqauqauqa', verbose=True)
-	pba.cross_validate_pronounce('testing', verbose=True)
+	pba.cross_validate_pronounce('underappreciationarified', verbose=True)
 	#pba.cross_validate()
 
 
