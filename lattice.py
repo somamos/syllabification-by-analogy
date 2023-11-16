@@ -229,10 +229,11 @@ class Lattice:
 			print('Warning. No paths were found. Furthest index: {}'.format(furthest_index))
 			# Patch every gap associated with the pair of letters beginning at that index.
 			self.link_silences(furthest_index)
+			last_furthest_index = furthest_index
 		if overflow:
 			print('Path threshold reached. Skipping.')
 			return SEARCHED_TOO_LONG
-		print('Paths found.')
+		print('{} Paths found.'.format(len(candidates)))
 		return candidates
 
 	# Count identical pronunciations generating
