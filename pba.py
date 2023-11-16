@@ -4,6 +4,9 @@
 # pronunciation by analogy of English?
 from lattice import Lattice, ERRORS
 
+MULTIPROCESS_LATTICES = False
+USE_LEGACY = False
+
 class PronouncerByAnalogy:
 	def cross_validate(self, start=0):
 		from datetime import datetime
@@ -315,10 +318,45 @@ class PronouncerByAnalogy:
 
 
 	@staticmethod
+	def multiprocess_pronounce(pl, input_word, lexical_database, substring_database):
+		import multiprocessing as mp
+		import math
+		# Chunking dicts courtesy https://stackoverflow.com/a/66555740/12572922
+		def chunks(data, data2=None, SIZE=10000):
+			from itertools import islice
+			it1 = iter(data)
+			if data2==None:
+				for i in range(0, len(data), SIZE):
+					yield {k:data[k] for k in islice(it1, SIZE)}
+				return
+
+			it2 = iter(data2)
+			for i in range(0, len(data), SIZE):
+				yield {k:data[k] for k in islice(it1, SIZE)}, {k:data2[k] for k in islice(it2, SIZE)}
+		# Spawns multiple processes for matching patterns within the lexical database.
+		num_processes = mp.cpu_count()
+		pool = mp.Pool(processes=num_processes)
+		if USE_LEGACY:
+			processes = [pool.apply_async(PronouncerByAnalogy.populate_batch, args=( \
+				input_word, lexical_subset)) \
+				for lexical_subset in chunks(lexical_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
+		# Better method (unfortunately does not benefit from multiprocessing.)
+		else:
+			processes = [pool.apply_async(PronouncerByAnalogy.populate_batch, args=( \
+				input_word, lexical_subset, substring_subset)) \
+				for lexical_subset, substring_subset in chunks(lexical_database, substring_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
+
+		list_of_lists_of_matches = [p.get() for p in processes]
+		matches = [item for sublist in list_of_lists_of_matches for item in sublist]
+		for match in matches:
+			if match == []:
+				continue
+			pl.add(*match)
+		return pl
+
+	@staticmethod
 	def pronounce(input_word, lexical_database, substring_database, verbose=False, attempt_bypass=False):
 		import time
-		import math
-		import multiprocessing as mp
 
 		if attempt_bypass and input_word in lexical_database:
 			return {'bypass': lexical_database[input_word]}
@@ -333,68 +371,35 @@ class PronouncerByAnalogy:
 		pl.flag_unrepresented_bigrams(input_word, lexical_database)
 
 		time_before = time.perf_counter()
-	# Populate lattice.
+		# Populate lattice.
+		if MULTIPROCESS_LATTICES:
+			pl = PronouncerByAnalogy.multiprocess_pronounce(pl, input_word, lexical_database, substring_database) # Pass in current scope.
+		else:
+			match_count = 0
+			for entry_word in lexical_database:
+				phonemes = lexical_database[entry_word] 
+				substrings = substring_database[entry_word]
+				if USE_LEGACY:
+					matches = PronouncerByAnalogy.populate_precalculated(input_word, entry_word, phonemes, substrings)
+				else:
+					matches = PronouncerByAnalogy.populate_legacy(input_word, entry_word, phonemes)					
+				for match in matches:
+					pl.add(*match)
+					match_count += 1
+			print('{} matches found'.format(match_count))
 
-	# VERSION WITH MULTIPROCESSING					
-		from itertools import islice
-		# Chunking dicts courtesy https://stackoverflow.com/a/66555740/12572922
-		def chunks(data, data2=None, SIZE=10000):
-			it1 = iter(data)
-			if data2==None:
-				for i in range(0, len(data), SIZE):
-					yield {k:data[k] for k in islice(it1, SIZE)}
-				return
+		time_after = time.perf_counter()
+		print('Completed in {} seconds'.format(time_after - time_before))
 
-			it2 = iter(data2)
-			for i in range(0, len(data), SIZE):
-				yield {k:data[k] for k in islice(it1, SIZE)}, {k:data2[k] for k in islice(it2, SIZE)}
-		# Spawns multiple processes for matching patterns within the lexical database.
-		num_processes = mp.cpu_count()
-		pool = mp.Pool(processes=num_processes)
-		# Legacy method
-
-		processes = [pool.apply_async(PronouncerByAnalogy.populate_batch, args=( \
-			input_word, lexical_subset)) \
-			for lexical_subset in chunks(lexical_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
-
-		# Better method (unfortunately does not benefit from multiprocessing.)
-
-		#processes = [pool.apply_async(PronouncerByAnalogy.populate_batch, args=( \
-		#	input_word, lexical_subset, substring_subset)) \
-		#	for lexical_subset, substring_subset in chunks(lexical_database, substring_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
-
-		list_of_lists_of_matches = [p.get() for p in processes]
-		matches = [item for sublist in list_of_lists_of_matches for item in sublist]
-		#for match in matches:
-		#	if match == []:
-		#		continue
-		#	pl.add(*match)
-	# VERSION WITHOUT MULTIPROCESSING
-		#match_count = 0
-		#for entry_word in lexical_database:
-		#	phonemes = lexical_database[entry_word] 
-		#	substrings = substring_database[entry_word]
-		#	# Better method
-		#	matches = PronouncerByAnalogy.populate_precalculated(input_word, entry_word, phonemes, substrings)
-		#	# Legacy method
-		#	matches = PronouncerByAnalogy.populate_legacy(input_word, entry_word, phonemes)
-		#	for match in matches:
-		#		pl.add(*match)
-		#		match_count += 1
-		#print('{} matches found'.format(match_count))
-		#time_after = time.perf_counter()
-		#print('Completed in {} seconds'.format(time_after - time_before))
-
-		#candidates = pl.find_all_paths()
-		#results = pl.decide(candidates)
+		candidates = pl.find_all_paths()
+		results = pl.decide(candidates)
 		# Print with no regard for ground truth.
-		#if verbose:
-		#	PronouncerByAnalogy.simple_print(results)
-		#return results
+		if verbose:
+			PronouncerByAnalogy.simple_print(results)
+		return results
 
 	# Given a dict of string labels (describing a strategy) mapped to candidates
 	# arrived at via that strategy, print.
-
 	@staticmethod
 	def simple_print(results, ground_truth=''):
 		from collections.abc import Iterable		
