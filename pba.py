@@ -4,8 +4,8 @@
 # pronunciation by analogy of English?
 from lattice import Lattice, ERRORS
 
-MULTIPROCESS_LATTICES = True
-USE_LEGACY = True
+MULTIPROCESS_LATTICES = False
+USE_LEGACY = False
 
 class PronouncerByAnalogy:
 	def cross_validate(self, start=0):
@@ -304,25 +304,45 @@ class PronouncerByAnalogy:
 		return matches
 
 	def pronounce_sentence(self, input_sentence, multiprocess_words=True):
+		import time
+		time_before = time.perf_counter()
 		processed_sentence = input_sentence.lower()
 		processed_sentence = ''.join([ch for ch in processed_sentence if ch in ' abcdefghijklmnopqrstuvwxyz'])
 		input_words = processed_sentence.split()
 		output_sentence = []
+		# Results will be a list of dicts. Each dict represents a set of evaluation methods mapped to their top candidate
+		# for that word.
+		results_list = []
 		if not multiprocess_words:
 			for word in input_words:
-				results = PronouncerByAnalogy.pronounce(word, self.lexical_database, self.substring_database, attempt_bypass=True)
-				for key in results:
-					if len(results) == 1 or key == '10100':
-						# Convert from Candidate back to string... Should this happen upstream? What even is encapsulation?
-						result = results[key].pronunciation if type(results[key]) == Lattice.Candidate else results[key]
-						output_sentence.append(result)
+				results_list.append(PronouncerByAnalogy.pronounce(word, self.lexical_database, self.substring_database))
+		else:
+			import multiprocessing as mp
+			num_processes = mp.cpu_count()
+			pool = mp.Pool(processes=num_processes)
+			results_list = pool.starmap(PronouncerByAnalogy.pronounce, \
+				([word, self.lexical_database, self.substring_database] \
+				for word in input_words))
+
+		for candidates_dict in results_list:
+			for key in candidates_dict:
+				if len(candidates_dict) == 1 or key == '10100':
+					# Convert from Candidate back to string.
+					result = candidates_dict[key].pronunciation \
+					if type(candidates_dict[key]) == Lattice.Candidate else candidates_dict[key]
+					output_sentence.append(result)
+					continue
+
+		time_after = time.perf_counter()
+		print('Sentence pronounced in {} seconds'.format(time_after - time_before))
 		print('{}:'.format(input_sentence))
 		print(' '.join(output_sentence))
+		return
 
 
 
 	@staticmethod
-	def manage_batch_populate(pl, input_word, lexical_database, substring_database):
+	def manage_batch_populate(pl, input_word, lexical_database, substring_database, verbose=False):
 		import multiprocessing as mp
 		import math
 		# Chunking dicts courtesy https://stackoverflow.com/a/66555740/12572922
@@ -352,7 +372,8 @@ class PronouncerByAnalogy:
 
 		list_of_lists_of_matches = [p.get() for p in processes]
 		matches = [item for sublist in list_of_lists_of_matches for item in sublist]
-		print('{} matches found with multiprocessing.'.format(len(matches)))
+		if verbose:
+			print('{} matches found with multiprocessing.'.format(len(matches)))
 		for match in matches:
 			if match == []:
 				continue
@@ -366,7 +387,6 @@ class PronouncerByAnalogy:
 		if attempt_bypass and input_word in lexical_database:
 			return {'bypass': lexical_database[input_word]}
 
-		print('Building lattice...')
 		if verbose:
 			print('Building pronunciation lattice for "{}"...'.format(input_word))
 		# Construct lattice.
@@ -378,7 +398,8 @@ class PronouncerByAnalogy:
 		time_before = time.perf_counter()
 		# Populate lattice.
 		if MULTIPROCESS_LATTICES:
-			pl = PronouncerByAnalogy.manage_batch_populate(pl, input_word, lexical_database, substring_database) # Pass in current scope.
+			pl = PronouncerByAnalogy.manage_batch_populate(pl, \
+				input_word, lexical_database, substring_database, verbose=False)
 		else:
 			match_count = 0
 			for entry_word in lexical_database:
@@ -391,10 +412,12 @@ class PronouncerByAnalogy:
 				for match in matches:
 					pl.add(*match)
 					match_count += 1
-			print('{} matches found.'.format(match_count))
+			if verbose:
+				print('{} matches found.'.format(match_count))
 
 		time_after = time.perf_counter()
-		print('Completed in {} seconds'.format(time_after - time_before))
+		if verbose:
+			print('Lattice populated in {} seconds'.format(time_after - time_before))
 
 		candidates = pl.find_all_paths()
 		results = pl.decide(candidates)
@@ -428,6 +451,6 @@ if __name__ == "__main__":
 	#pba.pronounce('uqauqauqauqauqauqa', verbose=True)
 	#pba.cross_validate_pronounce('test', verbose=True)
 	#pba.pronounce('jumps', pba.lexical_database, pba.substring_database, verbose=True)
-	pba.pronounce_sentence('The quick brown fox jumps over the lazy harpsicheleon.', multiprocess_words=False)
+	pba.pronounce_sentence('The quick brown fox jumps over the lazy harpsicheleon.', multiprocess_words=True)
 
 
