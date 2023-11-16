@@ -298,6 +298,7 @@ class PronouncerByAnalogy:
 				matches += func(input_word, entry_word, entry_dict_batch[entry_word])
 			else:
 				matches += func(input_word, entry_word, entry_dict_batch[entry_word], substrings_dict_batch[entry_word])
+		print('This process found {} matches.'.format(len(matches)))
 		return matches
 
 	def pronounce_sentence(self, input_sentence, use_multiprocessing=True):
@@ -340,7 +341,8 @@ class PronouncerByAnalogy:
 		def chunks(data, data2=None, SIZE=10000):
 			it1 = iter(data)
 			if data2==None:
-				yield {k:data[k] for k in islice(it1, SIZE)}
+				for i in range(0, len(data), SIZE):
+					yield {k:data[k] for k in islice(it1, SIZE)}
 				return
 
 			it2 = iter(data2)
@@ -351,23 +353,24 @@ class PronouncerByAnalogy:
 		pool = mp.Pool(processes=num_processes)
 		# Legacy method
 
-		#processes = [pool.apply_async(PronouncerByAnalogy.populate_batch, args=( \
-		#	input_word, lexical_subset)) \
-		#	for lexical_subset in chunks(lexical_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
+		processes = [pool.apply_async(PronouncerByAnalogy.populate_batch, args=( \
+			input_word, lexical_subset)) \
+			for lexical_subset in chunks(lexical_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
 
 		# Better method (unfortunately does not benefit from multiprocessing.)
 
-		processes = [pool.apply_async(PronouncerByAnalogy.populate_batch, args=( \
-			input_word, lexical_subset, substring_subset)) \
-			for lexical_subset, substring_subset in chunks(lexical_database, substring_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
+		#processes = [pool.apply_async(PronouncerByAnalogy.populate_batch, args=( \
+		#	input_word, lexical_subset, substring_subset)) \
+		#	for lexical_subset, substring_subset in chunks(lexical_database, substring_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
 
 		list_of_lists_of_matches = [p.get() for p in processes]
 		matches = [item for sublist in list_of_lists_of_matches for item in sublist]
-		for match in matches:
-			if match == []:
-				continue
-			pl.add(*match)
+		#for match in matches:
+		#	if match == []:
+		#		continue
+		#	pl.add(*match)
 	# VERSION WITHOUT MULTIPROCESSING
+		#match_count = 0
 		#for entry_word in lexical_database:
 		#	phonemes = lexical_database[entry_word] 
 		#	substrings = substring_database[entry_word]
@@ -376,20 +379,22 @@ class PronouncerByAnalogy:
 		#	# Legacy method
 		#	matches = PronouncerByAnalogy.populate_legacy(input_word, entry_word, phonemes)
 		#	for match in matches:
-		#		self.pl.add(*match)
+		#		pl.add(*match)
+		#		match_count += 1
+		#print('{} matches found'.format(match_count))
+		#time_after = time.perf_counter()
+		#print('Completed in {} seconds'.format(time_after - time_before))
 
-		time_after = time.perf_counter()
-		print('Completed in {} seconds'.format(time_after - time_before))
-
-		candidates = pl.find_all_paths()
-		results = pl.decide(candidates)
+		#candidates = pl.find_all_paths()
+		#results = pl.decide(candidates)
 		# Print with no regard for ground truth.
-		if verbose:
-			PronouncerByAnalogy.simple_print(results)
-		return results
+		#if verbose:
+		#	PronouncerByAnalogy.simple_print(results)
+		#return results
 
 	# Given a dict of string labels (describing a strategy) mapped to candidates
 	# arrived at via that strategy, print.
+
 	@staticmethod
 	def simple_print(results, ground_truth=''):
 		from collections.abc import Iterable		
