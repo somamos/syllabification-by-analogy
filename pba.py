@@ -30,7 +30,7 @@ class PronouncerByAnalogy:
 			# Iterate the occurrences of this error. Return the line to append to the file.
 			def count_error(code):
 				description = ERRORS[code]
-				self.simple_print(code)
+				PronouncerByAnalogy.simple_print(code)
 				# Log instance of error code.
 				words_total[description] = words_total.get(description, 0) + 1
 				# Print results.
@@ -143,9 +143,9 @@ class PronouncerByAnalogy:
 					print('Removed {} ({}) from dataset.'.format(input_word, answer))
 		if not found:
 			print('The dataset did not have {}.'.format(input_word))
-		results = self.pronounce(input_word, (trimmed_lexical_database, trimmed_substring_database), verbose=False)
+		results = PronouncerByAnalogy.pronounce(input_word, trimmed_lexical_database, trimmed_substring_database, verbose=False)
 		if verbose:
-			self.simple_print(results, answer)
+			PronouncerByAnalogy.simple_print(results, answer)
 
 		return results
 
@@ -310,7 +310,8 @@ class PronouncerByAnalogy:
 				matches += func(input_word, entry_word, entry_dict_batch[entry_word], substrings_dict_batch[entry_word])
 		return matches
 
-	def pronounce(self, input_word, trimmed_databases=None, verbose=False):
+	@staticmethod
+	def pronounce(input_word, lexical_database, substring_database, verbose=False):
 		import time
 		import math
 		import multiprocessing as mp
@@ -319,21 +320,14 @@ class PronouncerByAnalogy:
 			input_word = '#' + input_word
 		if not input_word.endswith('#'):
 			input_word = input_word + '#'		
-		# Default to the database loaded in the constructor.
-		lexical_database = self.lexical_database
-		substring_database = self.substring_database
 
-		# Refer to pruned versions when called by cross_validate_pronounce.
-		if trimmed_databases != None:
-			lexical_database = trimmed_databases[0]
-			substring_database = trimmed_databases[1]
 		if verbose:
 			print('Building pronunciation lattice for "{}"...'.format(input_word))
 		# Construct lattice.
-		self.pl = Lattice(input_word)
+		pl = Lattice(input_word)
 
 		# Bigrams unrepresented in the dataset will cause gaps in lattice paths.
-		self.pl.flag_unrepresented_bigrams(input_word, lexical_database)
+		pl.flag_unrepresented_bigrams(input_word, lexical_database)
 
 		time_before = time.perf_counter()
 	# Populate lattice.
@@ -355,22 +349,22 @@ class PronouncerByAnalogy:
 		pool = mp.Pool(processes=num_processes)
 		# Legacy method
 
-		processes = [pool.apply_async(PronouncerByAnalogy.populate_batch, args=( \
-			input_word, lexical_subset)) \
-		for lexical_subset in chunks(lexical_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
+		#processes = [pool.apply_async(PronouncerByAnalogy.populate_batch, args=( \
+		#	input_word, lexical_subset)) \
+		#for lexical_subset in chunks(lexical_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
 
 		# Better method (unfortunately does not benefit from multiprocessing.)
 
-		#processes = [pool.apply_async(PronouncerByAnalogy.populate_batch, args=( \
-		#	input_word, lexical_subset, substring_subset)) \
-		#for lexical_subset, substring_subset in chunks(lexical_database, substring_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
+		processes = [pool.apply_async(PronouncerByAnalogy.populate_batch, args=( \
+			input_word, lexical_subset, substring_subset)) \
+		for lexical_subset, substring_subset in chunks(lexical_database, substring_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
 
 		list_of_lists_of_matches = [p.get() for p in processes]
 		matches = [item for sublist in list_of_lists_of_matches for item in sublist]
 		for match in matches:
 			if match == []:
 				continue
-			self.pl.add(*match)
+			pl.add(*match)
 	# VERSION WITHOUT MULTIPROCESSING
 		#for entry_word in lexical_database:
 		#	phonemes = lexical_database[entry_word] 
@@ -385,16 +379,17 @@ class PronouncerByAnalogy:
 		time_after = time.perf_counter()
 		print('Completed in {} seconds'.format(time_after - time_before))
 
-		candidates = self.pl.find_all_paths()
-		results = self.pl.decide(candidates)
+		candidates = pl.find_all_paths()
+		results = pl.decide(candidates)
 		# Print with no regard for ground truth.
 		if verbose:
-			self.simple_print(results)
+			PronouncerByAnalogy.simple_print(results)
 		return results
 
 	# Given a dict of string labels (describing a strategy) mapped to candidates
 	# arrived at via that strategy, print.
-	def simple_print(self, results, ground_truth=''):
+	@staticmethod
+	def simple_print(results, ground_truth=''):
 		from collections.abc import Iterable		
 		if not isinstance(results, Iterable) and results in ERRORS:
 			print('{}: {}'.format(results, ERRORS[results]))
@@ -411,9 +406,10 @@ class PronouncerByAnalogy:
 if __name__ == "__main__":
 	pba = PronouncerByAnalogy("Preprocessing/Out/output_c_2023-11-11-09-08-47.txt")
 	#pba.cross_validate_pronounce('merit', verbose=True)
-	#results = pba.cross_validate_pronounce('mandatory', verbose=True)
+	pba.cross_validate_pronounce('mandatory', verbose=True)
+	#pba.pronounce('test', pba.lexical_database, pba.substring_database, verbose=True)
 	#pba.pronounce('uqauqauqauqauqauqa', verbose=True)
-	pba.cross_validate_pronounce('underappreciationarified', verbose=True)
+	#pba.cross_validate_pronounce('test', verbose=True)
 	#pba.cross_validate()
 
 
