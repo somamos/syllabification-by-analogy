@@ -4,8 +4,8 @@
 # pronunciation by analogy of English?
 from lattice import Lattice, ERRORS
 
-MULTIPROCESS_LATTICES = False
-USE_LEGACY = False
+MULTIPROCESS_LATTICES = True
+USE_LEGACY = True
 
 class PronouncerByAnalogy:
 	def cross_validate(self, start=0):
@@ -301,24 +301,28 @@ class PronouncerByAnalogy:
 				matches += func(input_word, entry_word, entry_dict_batch[entry_word])
 			else:
 				matches += func(input_word, entry_word, entry_dict_batch[entry_word], substrings_dict_batch[entry_word])
-		print('This process found {} matches.'.format(len(matches)))
 		return matches
 
-	def pronounce_sentence(self, input_sentence, use_multiprocessing=True):
-		input_sentence = input_sentence.lower()
-		input_sentence = ''.join([ch for ch in input_sentence if ch in ' abcdefghijklmnopqrstuvwxyz'])
-		input_words = input_sentence.split()
-
-		if not use_multiprocessing:
+	def pronounce_sentence(self, input_sentence, multiprocess_words=True):
+		processed_sentence = input_sentence.lower()
+		processed_sentence = ''.join([ch for ch in processed_sentence if ch in ' abcdefghijklmnopqrstuvwxyz'])
+		input_words = processed_sentence.split()
+		output_sentence = []
+		if not multiprocess_words:
 			for word in input_words:
-				result = PronouncerByAnalogy.pronounce(word, self.lexical_database, self.substring_database)
-				print(result)
-			return
+				results = PronouncerByAnalogy.pronounce(word, self.lexical_database, self.substring_database, attempt_bypass=True)
+				for key in results:
+					if len(results) == 1 or key == '10100':
+						# Convert from Candidate back to string... Should this happen upstream? What even is encapsulation?
+						result = results[key].pronunciation if type(results[key]) == Lattice.Candidate else results[key]
+						output_sentence.append(result)
+		print('{}:'.format(input_sentence))
+		print(' '.join(output_sentence))
 
 
 
 	@staticmethod
-	def multiprocess_pronounce(pl, input_word, lexical_database, substring_database):
+	def manage_batch_populate(pl, input_word, lexical_database, substring_database):
 		import multiprocessing as mp
 		import math
 		# Chunking dicts courtesy https://stackoverflow.com/a/66555740/12572922
@@ -348,6 +352,7 @@ class PronouncerByAnalogy:
 
 		list_of_lists_of_matches = [p.get() for p in processes]
 		matches = [item for sublist in list_of_lists_of_matches for item in sublist]
+		print('{} matches found with multiprocessing.'.format(len(matches)))
 		for match in matches:
 			if match == []:
 				continue
@@ -373,20 +378,20 @@ class PronouncerByAnalogy:
 		time_before = time.perf_counter()
 		# Populate lattice.
 		if MULTIPROCESS_LATTICES:
-			pl = PronouncerByAnalogy.multiprocess_pronounce(pl, input_word, lexical_database, substring_database) # Pass in current scope.
+			pl = PronouncerByAnalogy.manage_batch_populate(pl, input_word, lexical_database, substring_database) # Pass in current scope.
 		else:
 			match_count = 0
 			for entry_word in lexical_database:
 				phonemes = lexical_database[entry_word] 
 				substrings = substring_database[entry_word]
 				if USE_LEGACY:
-					matches = PronouncerByAnalogy.populate_precalculated(input_word, entry_word, phonemes, substrings)
-				else:
 					matches = PronouncerByAnalogy.populate_legacy(input_word, entry_word, phonemes)					
+				else:
+					matches = PronouncerByAnalogy.populate_precalculated(input_word, entry_word, phonemes, substrings)
 				for match in matches:
 					pl.add(*match)
 					match_count += 1
-			print('{} matches found'.format(match_count))
+			print('{} matches found.'.format(match_count))
 
 		time_after = time.perf_counter()
 		print('Completed in {} seconds'.format(time_after - time_before))
@@ -422,7 +427,7 @@ if __name__ == "__main__":
 	#pba.pronounce('test', pba.lexical_database, pba.substring_database, verbose=True)
 	#pba.pronounce('uqauqauqauqauqauqa', verbose=True)
 	#pba.cross_validate_pronounce('test', verbose=True)
-	pba.pronounce('jumps', pba.lexical_database, pba.substring_database, verbose=True)
-	#pba.pronounce_sentence('jumps.', use_multiprocessing=False)
+	#pba.pronounce('jumps', pba.lexical_database, pba.substring_database, verbose=True)
+	pba.pronounce_sentence('The quick brown fox jumps over the lazy harpsicheleon.', multiprocess_words=False)
 
 
