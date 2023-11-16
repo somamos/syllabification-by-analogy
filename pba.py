@@ -98,7 +98,6 @@ class PronouncerByAnalogy:
 				for line in e:
 					# For cross validating with a previous version's wordlist.
 					line = line.split()
-					self.cross_validation_wordlist.append('#{}#'.format(line[0]))
 
 		self.pl = None
 		print('Loading lexical database...')
@@ -107,12 +106,7 @@ class PronouncerByAnalogy:
 		self.substring_database = {}
 		with open(dataset_path, 'r', encoding='latin-1') as f:
 			for line in f:
-				# Add # and $.
 				line = line.split()
-				if not line[0].startswith('#') and not line[0].endswith('#'):
-					line[0] = '#{}#'.format(line[0])
-				if not line[1].startswith('$') and not line[1].endswith('$'):
-					line[1] = '${}$'.format(line[1])
 				self.lexical_database[line[0]] = line[1]
 				self.substring_database[line[0]] = [[line[0][i:j] for j in range(i, len(line[0]) + 1) \
 					if j - i > 1] for i in range(0, len(line[0]) - 1)]
@@ -123,10 +117,6 @@ class PronouncerByAnalogy:
 	# Removes input word from the dataset before pronouncing if present.
 	# Returns 
 	def cross_validate_pronounce(self, input_word, verbose=False):
-		if not input_word.startswith('#'):
-			input_word = '#' + input_word
-		if not input_word.endswith('#'):
-			input_word = input_word + '#'
 
 		trimmed_lexical_database = {}
 		trimmed_substring_database = {}
@@ -214,12 +204,12 @@ class PronouncerByAnalogy:
 			#  ori,
 			#   ri
 			# from matching.
-			# ['#l', '#la', '#lam', '#lamp', '#lamp#']
-			# ['la', 'lam', {lamp}, 'lamp#']
-			# [<am>, <amp>, 'amp#']
-			# [<mp>, 'mp#']
-			# ['p#']
-			# If the curly braced entry above matches, (but the one after it doesn't, meaning we're comparing it to, say, "lamprey")
+			# ['cl', 'cla', 'clam', 'clamp', 'clamps']
+			# ['la', 'lam', {lamp}, 'lamps']
+			# [<am>, <amp>, 'amps']
+			# [<mp>, 'mps']
+			# ['ps']
+			# If the curly braced entry above matches, (but the one after it doesn't)
 			# we must log the index of the match, k, say, and disregard the next n rows' first k - n indices.
 		prev_match_i_and_j = (0, 0)
 		for i, row in enumerate(smaller_words_substrings):
@@ -310,17 +300,29 @@ class PronouncerByAnalogy:
 				matches += func(input_word, entry_word, entry_dict_batch[entry_word], substrings_dict_batch[entry_word])
 		return matches
 
+	def pronounce_sentence(self, input_sentence, use_multiprocessing=True):
+		input_sentence = input_sentence.lower()
+		input_sentence = ''.join([ch for ch in input_sentence if ch in ' abcdefghijklmnopqrstuvwxyz'])
+		input_words = input_sentence.split()
+
+		if not use_multiprocessing:
+			for word in input_words:
+				result = PronouncerByAnalogy.pronounce(word, self.lexical_database, self.substring_database)
+				print(result)
+			return
+
+
+
 	@staticmethod
-	def pronounce(input_word, lexical_database, substring_database, verbose=False):
+	def pronounce(input_word, lexical_database, substring_database, verbose=False, attempt_bypass=False):
 		import time
 		import math
 		import multiprocessing as mp
-		print('Building lattice...')
-		if not input_word.startswith('#'):
-			input_word = '#' + input_word
-		if not input_word.endswith('#'):
-			input_word = input_word + '#'		
 
+		if attempt_bypass and input_word in lexical_database:
+			return {'bypass': lexical_database[input_word]}
+
+		print('Building lattice...')
 		if verbose:
 			print('Building pronunciation lattice for "{}"...'.format(input_word))
 		# Construct lattice.
@@ -351,13 +353,13 @@ class PronouncerByAnalogy:
 
 		#processes = [pool.apply_async(PronouncerByAnalogy.populate_batch, args=( \
 		#	input_word, lexical_subset)) \
-		#for lexical_subset in chunks(lexical_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
+		#	for lexical_subset in chunks(lexical_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
 
 		# Better method (unfortunately does not benefit from multiprocessing.)
 
 		processes = [pool.apply_async(PronouncerByAnalogy.populate_batch, args=( \
 			input_word, lexical_subset, substring_subset)) \
-		for lexical_subset, substring_subset in chunks(lexical_database, substring_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
+			for lexical_subset, substring_subset in chunks(lexical_database, substring_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
 
 		list_of_lists_of_matches = [p.get() for p in processes]
 		matches = [item for sublist in list_of_lists_of_matches for item in sublist]
@@ -406,10 +408,11 @@ class PronouncerByAnalogy:
 if __name__ == "__main__":
 	pba = PronouncerByAnalogy("Preprocessing/Out/output_c_2023-11-11-09-08-47.txt")
 	#pba.cross_validate_pronounce('merit', verbose=True)
-	pba.cross_validate_pronounce('mandatory', verbose=True)
+	#pba.cross_validate_pronounce('mandatory', verbose=True)
 	#pba.pronounce('test', pba.lexical_database, pba.substring_database, verbose=True)
 	#pba.pronounce('uqauqauqauqauqauqa', verbose=True)
 	#pba.cross_validate_pronounce('test', verbose=True)
-	#pba.cross_validate()
+	pba.pronounce('jumps', pba.lexical_database, pba.substring_database, verbose=True)
+	#pba.pronounce_sentence('jumps.', use_multiprocessing=False)
 
 
