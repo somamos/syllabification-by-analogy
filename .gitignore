@@ -1,3 +1,4 @@
 **/.DS_Store
+__pycache__/
 Data/Results_*
 Data/Syllabification_Results_*
