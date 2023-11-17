@@ -4,7 +4,7 @@
 
 Lattice construction gets a **150-300x performance boost**! Thanks to two ~16 MB dicts that store:
 
-1. every letter substring mapped to an inner dict of alternate domain representations mapped to the number of times those letter substrings map to those alternate domain representations in the database, i.e. `{sauce: {'sc--s': 6, 's-Wse': 2, 'sc-sx': 1}}`, and
+1. every letter substring mapped to an inner dict of alternate domain representations, themselves mapped to the number of times those letter substrings align with those alternate domain representations in the database, i.e. `{sauce: {'sc--s': 6, 's-Wse': 2, 'sc-sx': 1}}`, and
 2. its effective inverse, alternate domain representations' substrings mapped to the set of letter substrings that serve as keys to that representation in (1) i.e. `{'sc--s': {'sauci', 'sauce'}`.
 
 ## SbA and PbA Success! (11/11/2023)
