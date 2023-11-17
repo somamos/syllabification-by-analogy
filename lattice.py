@@ -1,4 +1,4 @@
-# A representation of possible mappings from a word's spelling to some other domain (pronunciation or syllabification).
+# A representation of possible mappings from a word's spelling to some alternate domain (pronunciation or syllabification).
 
 NO_PATHS_FOUND = 999
 SEARCHED_TOO_LONG = 998
@@ -96,7 +96,12 @@ class Lattice:
 		# Finalizes path_strings (only run this when a path is complete.)
 		def solidify(self):
 			self.pronunciation = ''.join(self.path_strings)
-			
+		def __eq__(self, other):
+			if not isinstance(other, type(self)):
+				return NotImplemented
+			return self.pronunciation == other.pronunciation
+		def __ne__(self, other):
+			return not self.__eq__(other)
 		def __str__(self):
 			return self.pronunciation
 		def __hash__(self):
@@ -484,42 +489,56 @@ class Lattice:
 	def print(self):
 		self.find_all_paths(True)
 
-	def add(self, sub_letters, sub_phones, start_index, word=''):
-		def create_or_iterate_arc(inter, a, b):
-			nonlocal word
-			new = self.Arc(inter, a, b)
-			found = self.arcs.get(hash((inter, a, b)), None)
-			if found is not None: # Do not iterate start nodes. The only count the number of words that start and end with
-				found.count += 1 if not found.contains([self.START_NODE, self.END_NODE]) else 0 # this word's first and end letter.
-				found.from_words.append(word)
-				return found
-			self.arcs[hash((inter, a, b))] = new # Not found. Add new one.
-			found2 = self.arcs.get(hash((inter, a, b)), None)
-			a.to_arcs.append(new)
-			b.from_arcs.append(new)
-			new.from_words.append(word)
-			return new				# Return.
-			
-		def create_or_find_node(l, p, i):
-			new = self.Node(l, p, i)
-			found = self.nodes.get(hash((l, p, i)), None)
-			if found is not None:
-				return found # Found. Return.
-
-			self.nodes[hash((l, p, i))] = new # Not found. Add new one.
-			return new 	# Return it.
+	def create_or_iterate_arc(self, inter, a, b, word='', forced_count=0):
+		new = self.Arc(inter, a, b)
+		found = self.arcs.get(hash((inter, a, b)), None)
+		if found is not None: # Do not iterate start nodes. The only count the number of words that start and end with
+			if forced_count != 0:
+				print('Error. Forcing the count of a duplicate arc: {}'.format(str(found)))
+				exit()
+			found.count += 1 if not found.contains([self.START_NODE, self.END_NODE]) else 0 # this word's first and end letter.
+			found.from_words.append(word)
+			return found
+		self.arcs[hash((inter, a, b))] = new # Not found. Add new one.
+		found2 = self.arcs.get(hash((inter, a, b)), None)
+		a.to_arcs.append(new)
+		b.from_arcs.append(new)
+		new.from_words.append(word)
+		# Force count if applicable.
+		if forced_count > 1:
+			new.count = forced_count
+		return new				# Return.
 		
-		# Add start node.
-		a = create_or_find_node(sub_letters[0], sub_phones[0], start_index)
-		# Add end node.
-		b = create_or_find_node(sub_letters[-1], sub_phones[-1], start_index + len(sub_letters) - 1)
-		# Add arc between them.
-		arc = create_or_iterate_arc(sub_phones[1:-1], a, b)
-		# Handle beginning and ending nodes.
+	def create_or_find_node(self, l, p, i):
+		new = self.Node(l, p, i)
+		found = self.nodes.get(hash((l, p, i)), None)
+		if found is not None:
+			return found # Found. Return.
+
+		self.nodes[hash((l, p, i))] = new # Not found. Add new one.
+		return new 	# Return it.
+
+	# Adds phonemes with a precalculated count. Yeah, I could overload add, but multiprocessing 
+	# passes in a tuple of arguments with no regard for default arguments' names, and I don't want
+	# that to cause issues (like "word" being mistaken for "forced_count" or vice versa).
+	def add_forced(self, sub_letters, sub_phones, start_index, forced_count):
+		a = self.create_or_find_node(sub_letters[0], sub_phones[0], start_index)
+		b = self.create_or_find_node(sub_letters[-1], sub_phones[-1], start_index + len(sub_letters) - 1)
+		arc = self.create_or_iterate_arc(sub_phones[1:-1], a, b, forced_count=forced_count)
 		if start_index == 0:
-			start_arc = create_or_iterate_arc('', self.START_NODE, a)
-		elif start_index + len(sub_letters) == len(self.letters):
-			end_arc = create_or_iterate_arc('', b, self.END_NODE)
+			start_arc = self.create_or_iterate_arc('', self.START_NODE, a)
+		if start_index + len(sub_letters) == len(self.letters):
+			end_arc = self.create_or_iterate_arc('', b, self.END_NODE)
+
+	def add(self, sub_letters, sub_phones, start_index, word=''):
+		a = self.create_or_find_node(sub_letters[0], sub_phones[0], start_index) # Local start.
+		b = self.create_or_find_node(sub_letters[-1], sub_phones[-1], start_index + len(sub_letters) - 1) # Local end.
+		arc = self.create_or_iterate_arc(sub_phones[1:-1], a, b, word=word) # Arc between.
+		# Handle global beginning and end.
+		if start_index == 0:
+			start_arc = self.create_or_iterate_arc('', self.START_NODE, a)
+		if start_index + len(sub_letters) == len(self.letters):
+			end_arc = self.create_or_iterate_arc('', b, self.END_NODE)
 
 	# Fix the silence problem.
 	# Every node at index furthest should link to every node at furthest + 1.

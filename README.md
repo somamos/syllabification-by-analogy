@@ -1,5 +1,9 @@
 # syllabification-by-analogy
 
+## Huge performance boost. (11/17/2023)
+
+New experimental pattern matcher yields a **150-300x performance boost** over earlier methods of lattice construction. Two ~16 MB dicts precalculate and store 1) the counts of every alternate domain representation of every substring in a given lexical database and 2) its effective inverse, the letters that map to a given alternate domain representation substring stored in (1).
+
 ## SbA and PbA Success! (11/11/2023)
 The "leave-one-out" cross validation tests for __pronunciation by analogy__ AND __syllabification by analogy__ are complete. Compared to the results of M&D's original publication, this repository demonstrates considerable pronunciation improvement (below, left) and modest syllabification improvement (below, right), probably due to a greater number of words in the lexical database (58,989 versus 19,594).
 
@@ -42,6 +46,9 @@ Read more about their algorithm [here](https://github.com/somamos/syllabificatio
 4. sba.py
     - [X] Add sba (split encodings by syllable).
     - [X] Evaluate sba results.
+5. patternmatcher.py
+    - [x] Test new and improved pattern matcher.
+    - [ ] Port previous methods to patternmatcher.py
 
 # Overview
  

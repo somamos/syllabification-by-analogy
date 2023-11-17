@@ -3,7 +3,9 @@
 # as summarized by Marchand & Damper's "Can syllabification improve
 # pronunciation by analogy of English?
 from lattice import Lattice, ERRORS
+from patternmatcher import PatternMatcher
 
+USE_EXPERIMENTAL_PATTERNMATCHER = True
 MULTIPROCESS_LATTICES = False
 USE_LEGACY = False
 
@@ -116,6 +118,7 @@ class PronouncerByAnalogy:
 
 				if verbose:
 					print('{}\n{}\n{}\n\n'.format(line[0], line[1], self.substring_database[line[0]]))
+		self.pm = PatternMatcher(self.lexical_database)
 
 	# Removes input word from the dataset before pronouncing if present.
 	# Returns 
@@ -136,7 +139,13 @@ class PronouncerByAnalogy:
 					print('Removed {} ({}) from dataset.'.format(input_word, answer))
 		if not found:
 			print('The dataset did not have {}.'.format(input_word))
-		results = PronouncerByAnalogy.pronounce(input_word, trimmed_lexical_database, trimmed_substring_database, verbose=False)
+
+		pm = None
+		if USE_EXPERIMENTAL_PATTERNMATCHER:
+			pm = self.pm
+			pm.remove(input_word, answer)
+
+		results = PronouncerByAnalogy.pronounce(input_word, trimmed_lexical_database, trimmed_substring_database, verbose=False, pm=pm)
 		if verbose:
 			PronouncerByAnalogy.simple_print(results, answer)
 
@@ -315,7 +324,10 @@ class PronouncerByAnalogy:
 		results_list = []
 		if not multiprocess_words:
 			for word in input_words:
-				results_list.append(PronouncerByAnalogy.pronounce(word, self.lexical_database, self.substring_database))
+				pm = None
+				if USE_EXPERIMENTAL_PATTERNMATCHER:
+					pm = self.pm
+				results_list.append(PronouncerByAnalogy.pronounce(word, self.lexical_database, self.substring_database, pm=pm))
 		else:
 			import multiprocessing as mp
 			num_processes = mp.cpu_count()
@@ -372,16 +384,18 @@ class PronouncerByAnalogy:
 
 		list_of_lists_of_matches = [p.get() for p in processes]
 		matches = [item for sublist in list_of_lists_of_matches for item in sublist]
-		if verbose:
-			print('{} matches found with multiprocessing.'.format(len(matches)))
 		for match in matches:
 			if match == []:
 				continue
 			pl.add(*match)
-		return pl
+		return pl, len(matches)
+
+	def timed_pronounce(self, input_word, lexical_database, substring_database, verbose=False, attempt_bypass=False, pm=None):
+		results, duration = PronouncerByAnalogy.pronounce(input_word, lexical_database, substring_database, verbose=verbose, attempt_bypass=attempt_bypass, pm=pm)
+		return results, duration
 
 	@staticmethod
-	def pronounce(input_word, lexical_database, substring_database, verbose=False, attempt_bypass=False):
+	def pronounce(input_word, lexical_database, substring_database, verbose=False, attempt_bypass=False, pm=None):
 		import time
 
 		if attempt_bypass and input_word in lexical_database:
@@ -395,13 +409,20 @@ class PronouncerByAnalogy:
 		# Bigrams unrepresented in the dataset will cause gaps in lattice paths.
 		pl.flag_unrepresented_bigrams(input_word, lexical_database)
 
-		time_before = time.perf_counter()
 		# Populate lattice.
-		if MULTIPROCESS_LATTICES:
-			pl = PronouncerByAnalogy.manage_batch_populate(pl, \
+		match_count = 0
+		time_before = time.perf_counter()
+		if pm is not None:
+			matches = pm.populate_optimized(input_word)
+			for match in matches:
+				key, alt_domain_representation, row_index, count = match
+				match_count += count
+				pl.add_forced(*match)
+
+		elif MULTIPROCESS_LATTICES:
+			pl, matches = PronouncerByAnalogy.manage_batch_populate(pl, \
 				input_word, lexical_database, substring_database, verbose=False)
 		else:
-			match_count = 0
 			for entry_word in lexical_database:
 				phonemes = lexical_database[entry_word] 
 				substrings = substring_database[entry_word]
@@ -412,19 +433,19 @@ class PronouncerByAnalogy:
 				for match in matches:
 					pl.add(*match)
 					match_count += 1
-			if verbose:
-				print('{} matches found.'.format(match_count))
-
-		time_after = time.perf_counter()
 		if verbose:
-			print('Lattice populated in {} seconds'.format(time_after - time_before))
+			print('{} matches found.'.format(match_count))
+		time_after = time.perf_counter()
+		duration = time_after - time_before
+		print('Lattice populated in {} seconds'.format(duration))
+
 
 		candidates = pl.find_all_paths()
 		results = pl.decide(candidates)
 		# Print with no regard for ground truth.
 		if verbose:
 			PronouncerByAnalogy.simple_print(results)
-		return results
+		return results, duration
 
 	# Given a dict of string labels (describing a strategy) mapped to candidates
 	# arrived at via that strategy, print.
@@ -443,14 +464,30 @@ class PronouncerByAnalogy:
 			print('{}: {}, {}'.format(result, results[result], evaluation))
 		print('Ground truth: {}'.format(ground_truth))
 
+	def compare_experimental(self, input_word, verbose=False, pm=None):
+		pm = None
+		results1, dur1 = pba.timed_pronounce(input_word, self.lexical_database, self.substring_database, verbose=verbose, pm=pm)
+		pm = self.pm
+		results2, dur2 = pba.timed_pronounce(input_word, self.lexical_database, self.substring_database, verbose=verbose, pm=pm)
+		print('Without experimental: ', end='')
+		print(['{}: {}'.format(key, str(results1[key])) for key in results1])
+		print('With experimental: ', end='')
+		print(['{}: {}'.format(key, str(results2[key])) for key in results2])
+		print('Same answers? {}. Speedup: {}x faster.'.format(results1==results2, dur1/dur2))
+
 if __name__ == "__main__":
 	pba = PronouncerByAnalogy("Preprocessing/Out/output_c_2023-11-11-09-08-47.txt")
+	
+	pba.compare_experimental('deliberation')
+	#USE_EXPERIMENTAL_PATTERNMATCHER = False
+	#pba = PronouncerByAnalogy("Preprocessing/Out/output_c_2023-11-11-09-08-47.txt")
+	#pba.cross_validate_pronounce('interpretation', verbose=True)
 	#pba.cross_validate_pronounce('merit', verbose=True)
 	#pba.cross_validate_pronounce('mandatory', verbose=True)
 	#pba.pronounce('test', pba.lexical_database, pba.substring_database, verbose=True)
 	#pba.pronounce('uqauqauqauqauqauqa', verbose=True)
 	#pba.cross_validate_pronounce('test', verbose=True)
 	#pba.pronounce('jumps', pba.lexical_database, pba.substring_database, verbose=True)
-	pba.pronounce_sentence('The quick brown fox jumps over the lazy harpsicheleon.', multiprocess_words=True)
+	#pba.pronounce_sentence('The quick brown fox jumps over the lazy harpsicheleon.', multiprocess_words=False)
 
 
