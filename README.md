@@ -1,5 +1,7 @@
 # syllabification-by-analogy
 
+Although titled syllabification-by-analogy, this repository's pronunciation-by-analogy method is currently far superior. See immediately below:
+
 ## PbA. Now 300x faster. (11/17/2023)
 
 Lattice construction gets a **HUGE performance boost**! Thanks to precalculating two ~16 MB dicts that store:
@@ -7,7 +9,7 @@ Lattice construction gets a **HUGE performance boost**! Thanks to precalculating
 1. every letter substring mapped to an inner dict of alternate domain representations, themselves mapped to the number of times those letter substrings align with those alternate domain representations in the database, i.e. `{sauce: {'sc--s': 6, 's-Wse': 2, 'sc-sx': 1}}`, and
 2. its effective inverse, alternate domain representations' substrings mapped to the set of letter substrings that serve as keys to that representation in (1) i.e. `{'sc--s': {'sauci', 'sauce'}`.
 
-## SbA and PbA Success! (11/11/2023)
+## Surpassing the original paper's results! (11/11/2023)
 The "leave-one-out" cross validation tests for __pronunciation by analogy__ AND __syllabification by analogy__ are complete. Compared to the results of M&D's original publication, this repository demonstrates considerable pronunciation improvement (below, left) and modest syllabification improvement (below, right), probably due to a greater number of words in the lexical database (58,989 versus 19,594).
 
 ![results_](https://github.com/somamos/syllabification-by-analogy/assets/141623014/f39516db-cd8d-4e1a-a0e5-8e99fd0dc45a)
@@ -25,7 +27,66 @@ The repository currently consists of
 
 Read more about their algorithm [here](https://github.com/somamos/syllabification-by-analogy/files/13186641/Damper.Marchand.s.Can.syllabification.improve.pronunciation.by.analogy.of.English.pdf).
 
+## Pronunciation Key
+
+By the way, the pronunciation representations will seem like gibberish until you get used to the following mapping (designed by Sejnowski & Rosenberg to train NETtalk):
+<details>
+<summary> Click to expand table </summary>
+
+| phoneme | example1 | example2 |
+|---------|----------|----------|
+| a       | odd      | father   |
+| A       | hide     | bite     |
+| c       | ought    | bought   |
+| @       | at       | bat      |
+| ^       | hut      | but      |
+| W       | cow      | bout     |
+| i       | eat      | pete     |
+| I       | it       | bit      |
+| o       | oat      | boat     |
+| O       | toy      | boy      |
+| E       | ed       | bet      |
+| R       | hurt     | bird     |
+| e       | ate      | bake     |
+| U       | hood     | book     |
+| u       | two      | lute     |
+| b       | be       | bet      |
+| C       | cheese   | chin     |
+| d       | dee      | debt     |
+| D       | thee     | this     |
+| f       | fee      | fin      |
+| g       | green    | guess    |
+| h       | he       | head     |
+| J       | gee      | gin      |
+| k       | key      | ken      |
+| l       | lee      | let      |
+| m       | me       | met      |
+| n       | knee     | net      |
+| G       | ping     | sing     |
+| p       | pee      | pet      |
+| r       | read     | red      |
+| s       | sea      | sit      |
+| S       | she      | shin     |
+| t       | tea      | test     |
+| T       | theta    | thin     |
+| v       | vee      | vest     |
+| w       | we       | wet      |
+| y       | yield    | yet      |
+| z       | zee      | zoo      |
+| Z       | seizure  | leisure  |
+| Y       | cute     | curate   |
+| L       | yentl    | ample    |
+| IzM     | escapism |          |
+| K       | sexual   |          |
+| X       | excess   |          |
+| #       | examine  |          |
+| *       | one      |          |
+| !       | nazi     |          |
+| Q       | quest    |          |
+</details>
+
 ## todo:
+
 1. preprocess.py
     - [ ] Build version of dataset c that only contains words from dataset a∩b.
 2. align.py
@@ -52,8 +113,10 @@ Read more about their algorithm [here](https://github.com/somamos/syllabificatio
     - [x] Test new and improved pattern matcher.
     - [X] Port previous methods to oldpatternmatcher.py
 
-# Overview
- 
+# Overview 
+
+(this section needs updating).
+
 ## preprocess.py
 
 Given dataset a (containing phoneme information and stress pattern information) and dataset b (containing syllable division information), `preprocess.py` merges them into the following form (described on page 10 of the paper):
