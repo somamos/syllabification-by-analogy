@@ -23,8 +23,20 @@ class PatternMatcher:
 			pickle.dump(self.alt_domain_to_keys, g)
 			g.close()
 
+	# 'slime' -> [['slime'], ['slim', 'lime'], ['sli', 'lim', 'ime'], ['sl', 'li', 'im', 'me']]
+	@staticmethod
+	def generate_substrings_largest_first(a):
+		return [[a[l: l + len(a) + 1 - i] for l in range(i)] for i in range(1, len(a))]
 
+	# 'slime' -> [['sl', 'li', 'im', 'me'], ['sli', 'lim', 'ime'], ['slim', 'lime'], ['slime']]
+	@staticmethod
+	def generate_substrings_smallest_first(a):
+		return [[a[ i: i + l ] for i in range(len(a) - l + 1 )] for l in range(2, len(a) + 1)]
 
+	# 'slime' -> [['sl', 'sli', 'slim', 'slime'], ['li', 'lim', 'lime'], ['im', 'ime'], ['me']]
+	@staticmethod
+	def generate_substrings_by_index_and_increasing_length(a):
+		return [[a[i:j] for j in range(i, len(a) + 1) if j - i > 1] for i in range(0, len(a) - 1)]
 	# Given a one-to-one mapping of word spellings to some alternate domain
 	# (phonemes or syllables), generate and return two dicts:
 	# 1) "substring_to_alt_domain_count_dict", a dict of dicts of the form:
@@ -55,28 +67,8 @@ class PatternMatcher:
 			if index%10000 == 0:
 				print('Indexed {} out of {} words.'.format(index, len(word_to_alt_domain_dict)))
 			alt = word_to_alt_domain_dict[word] # Representation in the alternate domain.
+			substring_to_alt_domain_count_dict, alt_domain_to_keys = PatternMatcher.add(word, alt, substring_to_alt_domain_count_dict, alt_domain_to_keys)
 
-			substrings = [[word[i:j] for j in range(i, len(word) + 1) \
-				if j - i > 1] for i in range(0, len(word) - 1)]
-			substrings_alt = [[alt[i:j] for j in range(i, len(alt) + 1) \
-				if j - i > 1] for i in range(0, len(alt) - 1)]
-			for i, row in enumerate(substrings):
-				# Populate dict iterating by this word's mappings.
-				for j, substring in enumerate(row):
-					substr_alt = substrings_alt[i][j]
-					# Get or instantiate this substring's counts.
-					entry = substring_to_alt_domain_count_dict.get(substring, {})
-					# Iterate count of this alternate domain representation.
-					entry[substr_alt] = entry.get(substr_alt, 0) + 1
-					# Update this substring's counts.
-					substring_to_alt_domain_count_dict[substring] = entry
-
-					# Update alt_domain_to_keys if applicable.
-					if len(substring) <= 2:
-						continue
-					key_set = alt_domain_to_keys.get(substr_alt, set()) 
-					key_set.add(substring)
-					alt_domain_to_keys[substr_alt] = key_set
 		print('Done.')
 		return substring_to_alt_domain_count_dict, alt_domain_to_keys
 
@@ -107,7 +99,7 @@ class PatternMatcher:
 	# Returns a list of tuples of the form (substr, phonemes[i : i + len(substr)], index, count(!))
 	def populate_optimized(self, input_word, verbose=False):
 		matches = []
-		input_letter_substrings_smallest_first = [[input_word[i:i+l] for i in range(len(input_word)-l+1)] for l in range(2, len(input_word)+1)]
+		input_letter_substrings_smallest_first = PatternMatcher.generate_substrings_smallest_first(input_word)
 
 		input_substrings_to_alt_domain_count = {}
 		for row in input_letter_substrings_smallest_first:
@@ -195,8 +187,44 @@ class PatternMatcher:
 							alt_domain_substring_counts[alt_domain_representation]))
 					matches.append(match)
 		return matches
-	def add(self, input_word, input_altrep):
-		pass
+
+	# A nice and encapsulated way to put a word back after cross-validation.
+	def replace(self, input_word, input_altrep):
+		self.substring_to_alt_domain_count_dict, self.alt_domain_to_keys = \
+			PatternMatcher.add(input_word, input_altrep, self.substring_to_alt_domain_count_dict, self.alt_domain_to_keys)
+
+
+	# Populate dict d and effective inverse d_i with a word input_word and its alternate representation input_altrep.
+	# Is also used to put a word back after leave-one-out cross-validation.
+	@staticmethod
+	def add(input_word, input_altrep, d, d_i, verbose=False):
+		# d is substring_to_alt_domain_count_dict, 
+		# d_i is alt_domain_to_keys
+		substrings = PatternMatcher.generate_substrings_by_index_and_increasing_length(input_word)
+		substrings_alt = PatternMatcher.generate_substrings_by_index_and_increasing_length(input_altrep)
+		for i, row in enumerate(substrings):
+			# Populate dict iterating by this word's mappings.
+			for j, substring in enumerate(row):
+				substr_alt = substrings_alt[i][j]
+				# Get or instantiate this substring's counts.
+				entry = d.get(substring, {})
+				# Iterate count of this alternate domain representation.
+				entry[substr_alt] = entry.get(substr_alt, 0) + 1
+				# Update this substring's counts.
+				d[substring] = entry
+
+				# Update alt_domain_to_keys if applicable.
+				# We don't need to include keys with 2 or fewer characters,
+				# because they have no sub-substrings and so double-counting
+				# is not an issue.
+				if len(substring) <= 2:
+					continue
+				key_set = d_i.get(substr_alt, set())
+				if verbose:
+					print('Adding {}: {} to inverse dict.'.format(substr_alt, substring))
+				key_set.add(substring)
+				d_i[substr_alt] = key_set
+		return d, d_i
 
 	# For cross-validation.
 	# This is kind of like un-blending a smoothie.
@@ -210,12 +238,10 @@ class PatternMatcher:
 
 	# Don't forget to add it back later!
 	# Returns true if removed. Returns false if it didn't exist in the first place.
-	def remove(self, input_word, input_altrep):
-		print('Attempting to remove {} ({}) from the optimized dataset'.format(input_word, input_altrep))
-		# Helper function 1.
-		def generate_substrings_largest_first(a):
-			return [[a[l:l + len(a) + 1 - i] for l in range(i)] for i in range(1, len(a))]
-		# Helper function 2.
+	def remove(self, input_word, input_altrep, verbose=False):
+		if verbose:
+			print('Attempting to remove {} ({}) from the optimized dataset'.format(input_word, input_altrep))
+		# Helper function.
 		def decrement_or_delete(sub_input, sub_altrep):
 			nonlocal input_word
 			entry = self.substring_to_alt_domain_count_dict.get(sub_input, None)
@@ -234,12 +260,21 @@ class PatternMatcher:
 			elif count == 0:
 				print('Warning. The input word\'s provided alternate domain representation was at count zero. This should never happen.')
 			elif count == 1:
-				print('Removing input word\'s alternate domain representation {} from entry.'.format(sub_altrep))
+				if verbose:
+					print('Removing input word\'s alternate domain representation {} from entry.'.format(sub_altrep))
 				del entry[sub_altrep]
 				if len(entry) == 0:
-					print('That was the only representation. Removing {} from main dict as well.'.format(sub_input))
+					if verbose:
+						print('That was the only representation. Removing {} from main dict as well.'.format(sub_input))
 					del self.substring_to_alt_domain_count_dict[sub_input]
 				# Now remove from alt_domain_to_keys as well.
+				# First of all, we skip representations whose length is 2 or less,
+				# as those were not in alt_domain_to_keys in the first place.
+				if len(sub_altrep) <= 2:
+					if verbose:
+						print('No longer considering the removal of {} as it\'s not long enough to have been placed into alt_domain_to_keys.'.format(sub_altrep))
+					return True
+
 				each_substr_with_this_alt_domain = self.alt_domain_to_keys.get(sub_altrep, None)
 				if each_substr_with_this_alt_domain == None:
 					print('Warning. Alternate representation {} was found in and removed from the dict, \
@@ -250,25 +285,145 @@ class PatternMatcher:
 					print('Warning. Alternate representation {} was found in the inverse dict ({}), but it does not map to provided input letters ({}) \
 						in the inverse dict. This should never happen'.format(sub_altrep, each_substr_with_this_alt_domain, sub_input))
 					exit()
-				print('Successfully removing alternate domain representation {}\'s mapping to letters {}'.format(sub_altrep, sub_input))
+				if verbose:
+					print('Successfully removing alternate domain representation {}\'s mapping to letters {}'.format(sub_altrep, sub_input))
 				each_substr_with_this_alt_domain.remove(sub_input)
-				if len(each_substr_with_this_alt_domain):
+				if len(each_substr_with_this_alt_domain) == 0:
 					# No more representations remain.
-					print('That was the last element of this set. Deleting {} from alt_domain_to_keys entirely.'.format(sub_altrep))
+					if verbose:
+						print('That was the last element of this set. Deleting {} from alt_domain_to_keys entirely.'.format(sub_altrep))
 					del self.alt_domain_to_keys[sub_altrep]
 			else:
 				# Since there are other instances of this mapping, we do not delete from the alt_domain_to_keys set.
 				# We only decrement.
-				print('Successfully decremented {} from {}.'.format(sub_altrep, sub_input))
+				if verbose:
+					print('Successfully decremented {} from {}.'.format(sub_altrep, sub_input))
 				entry[sub_altrep] -= 1
 		# Main loop of the method.
-		input_word_substrings = generate_substrings_largest_first(input_word)
-		input_altrep_substrings = generate_substrings_largest_first(input_altrep)
+		input_word_substrings = PatternMatcher.generate_substrings_largest_first(input_word)
+		input_altrep_substrings = PatternMatcher.generate_substrings_largest_first(input_altrep)
 		for i, row in enumerate(input_word_substrings):
 			for j in range(len(row)):
-				decrement_or_delete(input_word_substrings[i][j], input_altrep_substrings[i][j])
+				decrement_or_delete(input_word_substrings[i][j], input_altrep_substrings[i][j]) 
 		return True
 
+	@staticmethod
+	def copy_dict(a):
+		copy = {}
+		for key in a:
+			copy[key] = a[key].copy()
+		return copy
+	# For a given word and its representation, returns true when 
+	# removal of this word "should" change inverse_dict by virtue of wiping out
+	# the entire existence of at least one of its substrings' letter-to-alternate-domain representations.
+	def all_substring_counts_greater_than_one(self, word, altrep):
+		# Check largest first, because they're the most likely to about to be deleted.
+		word_substrings = PatternMatcher.generate_substrings_largest_first(word)
+		altrep_substrings = PatternMatcher.generate_substrings_largest_first(altrep)
+		for i, substrings_row in enumerate(word_substrings):
+			for j, substring in enumerate(substrings_row):
+				subaltrep = altrep_substrings[i][j]
+				# At least one substring is about to be deleted entirely.
+				if self.substring_to_alt_domain_count_dict[substring][subaltrep] == 1:
+					return False
+		return True
+
+	# Removing a word and adding it back should not permanently change the contents of either dict.
+	# Cross validation should leave no trace! or else the dict will deteriorate over the course of the test.
+	# When check_every = -1, we check every single iteration. This is very, very slow.
+	# Otherwise, check_every must be 2 or more due to modulo.
+	def simulate_leaveoneout(self, ground_truth_dict, check_every=-1):
+		if check_every != -1 and check_every <2:
+			print('NO. check_every must equal -1 OR be above 1.')
+			exit()
+		words_tested = 0
+		is_test_round = False # Checking for dict equality is hugely expensive.
+		# Let's only test every once in a while.
+		has_failed = False # Also, only copy dicts again after you've failed.
+
+		total_tests = 0
+		total_failures = 0
+
+		# Let's just refer to them this way, it's easier to type.
+		d_ = self.substring_to_alt_domain_count_dict
+		d_inv = self.alt_domain_to_keys
+		# Copy at the beginning.
+		d_pre = PatternMatcher.copy_dict(d_)
+		d_inv_pre = PatternMatcher.copy_dict(d_inv)
+
+		for word in ground_truth_dict:
+			# Print updates periodically.
+			# We test every representation of every word.
+			representation = ground_truth_dict[word]
+			
+			if check_every == -1 or ((words_tested)%check_every == 0):
+				print('{} / {} ({:.2f}%) words have been tested.'.format( \
+					words_tested, len(ground_truth_dict), \
+					100*words_tested/len(ground_truth_dict)))
+				print('TEST COUNT: {} FAILURE COUNT: {}'.format(total_tests, total_failures))
+				is_test_round = True # Reset this.
+				# Flush copy.
+				if has_failed:
+					d_pre = PatternMatcher.copy_dict(d_)
+					d_inv_pre = PatternMatcher.copy_dict(d_inv)
+				has_failed = False
+
+
+			# We only expect a change to the inverse dict if a substring-to-alternate-domain
+			# is on the verge of being entirely erased.
+			# condition 1: two-char representations aren't in the inverse dict. Since they don't have
+			# sub-substrings, they should not be expected to impact the inverse dict.
+			# condition 2: if all of this word's substrings had a count of greater than one,
+			# then we should expect the inverse dict to stay the same. There was no "last straw."
+			d_inv_change_expected = (len(representation) > 2) and \
+				not self.all_substring_counts_greater_than_one(word, representation)
+
+			# Remove the word.
+			self.remove(word, representation)
+			# TEST ROUND BARRIER 1
+			if is_test_round:
+				# Make sure the dicts are NOT equal.
+				if d_ == d_pre:
+					print('WARNING. The removal of {} ({}) did not change the optimized dict.'.format(word, representation))
+					total_failures += 1
+					has_failed = True
+
+				# The inverse dict requires a bit more nuanced, two-part sanity check:
+				# A chance was expected yet none occurred.
+				if d_inv_change_expected and d_inv == d_inv_pre:
+					print('WARNING. Expected inverse dict change by removal of {} ({}) did not occur.'.format(word, representation))
+					total_failures += 1
+					has_failed = True
+				# A change was NOT expected yet one DID occur.
+				elif not d_inv_change_expected and d_inv != d_inv_pre:
+					print('WARNING. Unexpected change to inverse dict occurred by removal of {} ({}).'.format(word, representation))
+					total_failures += 1
+					has_failed = True
+
+			# Add the word back.
+			self.replace(word, representation)
+
+			# TEST ROUND BARRIER 2
+			if is_test_round:
+
+				# Make sure the dicts ARE equal.
+				if d_ != d_pre:
+					print('WARNING. Removal and replacement of {} ({}) has permanently altered the optimized dict.'.format(word, representation))
+					total_failures += 1
+					has_failed = True
+				if d_inv != d_inv_pre:
+					print('WARNING. Removal and replacement of {} ({}) has permanently altered the inverse dict.'.format(word, representation))
+					total_failures += 1
+					has_failed = True
+					# Find the difference.
+					for key in d_inv:
+						if d_inv[key] != d_inv_pre[key]:
+							print('{}: {}\nhas become\n{}: {}'.format(key, d_inv_pre[key], key, d_inv[key]))
+				# Don't believe me? Count them, "total_failures" has had the opportunity to increment five times.
+				total_tests += 5
+				is_test_round = False
+			words_tested += 1
+		print('Test complete. Out of {} opportunities to fail, {} tests actually failed.'.format(total_tests, total_failures))
 
 
 
