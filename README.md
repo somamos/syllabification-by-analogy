@@ -12,22 +12,21 @@ The "leave-one-out" cross validation tests for __pronunciation by analogy__ AND 
 
 ![results_](https://github.com/somamos/syllabification-by-analogy/assets/141623014/f39516db-cd8d-4e1a-a0e5-8e99fd0dc45a)
 
-Future effort will go toward a C# version for a game development concept, the original impetus for this study. More details soon.
+## Quick Start
+
+As of 11/17/2023, all preprocessed datasets are tracked with the repository -- no preprocessing needed! Just run `python pba.py` from the repository location after cloning. The top-level code has a few methods to get you started.
 
 The repository currently consists of 
 
-1. Preprocessing to merge common words between a pronunciation wordlist and a syllabified wordlist,
-2. Marchand & Damper's text-phoneme alignment algorithm,
-3. Dedina & Nusbaum's pronunciation by analogy method (with tweaks by M&D), and
-4. An implementation of Marchand & Damper's syllabification by analogy (SbA).
+1. `preprocessing.py`: to merge common words between a pronunciation wordlist `a.txt` and a syllabified wordlist `b.txt` (as well as to prep a third dataset `c.txt` that has both in one),
+2. `align.py`, an implementation of Marchand & Damper's text-phoneme alignment algorithm,
+3. `pba.py`, an implementation of Dedina & Nusbaum's pronunciation by analogy method (with tweaks by M&D) **now with 150-300x performance boost!** via `patternmatching.py`, and
+4. `sba.py`, A not-yet-optimized implementation of Marchand & Damper's syllabification by analogy (SbA).
 
 Read more about their algorithm [here](https://github.com/somamos/syllabification-by-analogy/files/13186641/Damper.Marchand.s.Can.syllabification.improve.pronunciation.by.analogy.of.English.pdf).
 
 ## todo:
 1. preprocess.py
-    - [ ] Allow for outputs that do not mix datasets A and B.
-    - [ ] Allow for outputs from different sources.
-    - [ ] Test the premise that inferring nucleus locations pre-alignment improves results. Is it smart to anchor nuclei so naively based on such simple rules? Or should we instead let alignment do its thing and determine the nucleus per syllable post-alignment (ditching mappings of multiple aligned nuclei per dataset-b-encoded syllable?)
     - [ ] Build version of dataset c that only contains words from dataset a∩b.
 2. align.py
     - [X] Prioritize encodings' nucleus locations during alignment (list of index tuples?).
@@ -42,7 +41,7 @@ Read more about their algorithm [here](https://github.com/somamos/syllabificatio
     - [X] Bug fix: right-aligned substrings of substrings still count as duplicate matches. (tori -> ori -> ri).
     - [ ] Multiprocessing at word level for cross validation.
     - [X] Multiprocessing at "pattern matching" level.
-    - [ ] Rewrite a "complete matching" method that benefits from multiprocessing (populate_precalculated doesn't).
+    - [X] Rewrite a "complete matching" method that benefits from multiprocessing (populate_precalculated doesn't).
     - [ ] Multiprocessing at BFS for long words (20+ characters).
     - [ ] Write a convenient way to compare two datasets' results.
     - [ ] Track the worst-performing input letters, output phonemes, and most challenging ground truth phonemes. 
@@ -51,7 +50,7 @@ Read more about their algorithm [here](https://github.com/somamos/syllabificatio
     - [X] Evaluate sba results.
 5. patternmatcher.py
     - [x] Test new and improved pattern matcher.
-    - [ ] Port previous methods to patternmatcher.py
+    - [X] Port previous methods to oldpatternmatcher.py
 
 # Overview
  
