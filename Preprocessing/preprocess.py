@@ -502,6 +502,8 @@ def preprocess_c(aligned_path=None):
 		ending_in_schwa_count = 0
 		all_spellings = set() # Detect duplicates to skip.
 		for line in c:
+			if line.startswith(';;;'):
+				continue
 			line = line.lower().strip()
 			word, pronunciation = line.split('  ')
 			pronunciation = pronunciation.lstrip() # Sometimes, the separator was three spaces instead of two.
