@@ -580,8 +580,9 @@ def preprocess_c(aligned_path=None):
 		print('{} words had more phonemes than letters'.format(imbalanced_count))
 		print('{} words ending in schwa have been fixed.'.format(ending_in_schwa_count))
 	print('{} words added from c.'.format(len(corpus)))
-
-	if aligned_path == None:
+	import os.path
+	if aligned_path == None or not os.path.isfile(aligned_path):
+		print('Aligned version of dataset c not found. Aligning dataset c.')
 		out = []
 		# Align.
 		# See "Aligning Text and Phonemes for Speech Technology Applications Using an EM-Like Algorithm"

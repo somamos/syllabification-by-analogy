@@ -4,10 +4,10 @@
 # pronunciation by analogy of English?
 from lattice import Lattice, ERRORS
 from patternmatcher import PatternMatcher
+from oldpatternmatcher import OldPatternMatcher
 
 USE_EXPERIMENTAL_PATTERNMATCHER = True
-MULTIPROCESS_LATTICES = False
-USE_LEGACY = False
+MULTIPROCESS_LEGACY = False
 
 class PronouncerByAnalogy:
 	def cross_validate(self, start=0):
@@ -119,6 +119,7 @@ class PronouncerByAnalogy:
 				if verbose:
 					print('{}\n{}\n{}\n\n'.format(line[0], line[1], self.substring_database[line[0]]))
 		self.pm = PatternMatcher(self.lexical_database)
+		self.opm = OldPatternMatcher()
 
 	# Removes input word from the dataset before pronouncing if present.
 	# Returns 
@@ -135,7 +136,7 @@ class PronouncerByAnalogy:
 			else:
 				found = True
 				answer = self.lexical_database[word]
-				if verbose:
+				if verbose and not USE_EXPERIMENTAL_PATTERNMATCHER:
 					print('Removed {} ({}) from dataset.'.format(input_word, answer))
 		if not found:
 			print('The dataset did not have {}.'.format(input_word))
@@ -145,172 +146,11 @@ class PronouncerByAnalogy:
 			pm = self.pm
 			pm.remove(input_word, answer)
 
-		results = PronouncerByAnalogy.pronounce(input_word, trimmed_lexical_database, trimmed_substring_database, verbose=False, pm=pm)
+		results, duration = PronouncerByAnalogy.pronounce(input_word, trimmed_lexical_database, trimmed_substring_database, verbose=False, pm=pm)
 		if verbose:
 			PronouncerByAnalogy.simple_print(results, answer)
 
 		return results
-
-	# Search for matches of the smaller word within the larger word. "precaculated" refers to
-	# all of entry word's substrings, passed in as entry_substrings.
-	# This is the equivalent to Marchand & Damper's improvement:
-	#   beginning with the end of the shorter word aligned with the start of the longer word, and 
-	#   ending with the start of the shorter word aligned with the end of the longer word.
-	# 
-	#        FROM       ->           TO
-	# alignment|||||||  ->  |||||||alignment
-	# |||||||malignant  ->  malignant|||||||
-	# 
-	# Returns matches, a list of tuples representing matching substrings to add to the lattice.
-	@staticmethod
-	def populate_precalculated(input_word, entry_word, phonemes, entry_substrings):
-		matches = []
-		def add_entry(substr_index_tuple, bigger_w, length_diff):
-			import re
-			substr, i = substr_index_tuple
-			indices_in_bigger = [m.start() for m in re.finditer('(?={})'.format(substr), bigger_w)]
-			# Add to the lattice.
-			for bigger_index in indices_in_bigger:
-				# Entry word is the bigger word.
-				if length_diff <= 0:
-					# The smaller word's starting index, then, is i, because of how input_precalculated_substrings are organized.
-					# Locate the indices in the entry word out of which to slice the phonemes.
-					matches.append((substr, phonemes[bigger_index : bigger_index + len(substr)], i, entry_word))
-				# Input word is the bigger word.
-				else:
-					matches.append((substr, phonemes[i : i + len(substr)], bigger_index, entry_word))
-
-		length_difference = len(input_word) - len(entry_word)
-		# Input word is shorter.
-		if length_difference <= 0:
-			# Maps every possible substring greater than length 2 to their first index of occurrence
-			# in order, conveniently, from smallest to largest (per starting index), i.e.:
-			# in, ind, inde, index
-			# nd, nde, ndex,
-			# de, dex
-			# ex
-			# Much of the logic that follows hinges upon this ordering.
-			smaller_words_substrings = [[input_word[i:j] for j in range(i, len(input_word) + 1) \
-				if j - i > 1] for i in range(0, len(input_word) + 1)]
-
-			bigger_word = entry_word
-		else:
-			# entry_substrings were precalculated and are ordered as smaller_words_substrings above.
-			smaller_words_substrings = entry_substrings
-			bigger_word = input_word
-		preserved_prev_substring_match = ''
-		NO_MATCH = ('', -1)
-		# PART 1: Prevent LEFT-ALIGNED substrings of matches, themselves, from matching.
-			# A tuple saving the previous match and its index.
-			# Due to the sorted order of (both input's and entries') precalculated substrings,
-			# A first NON-match often implies the previous substring DID match.
-			# To avoid double counting smaller sections of the same substring e.g.:
-			# to,
-			# tor,
-			# tori,
-			# we must only add items after the first nonmatch.
-		prev_matching_substring = NO_MATCH
-		# PART 2: Prevent RIGHT-ALIGNED substrings of matches, themselves, from matching.
-			# The above fix does not prevent
-			# tori,
-			#  ori,
-			#   ri
-			# from matching.
-			# ['cl', 'cla', 'clam', 'clamp', 'clamps']
-			# ['la', 'lam', {lamp}, 'lamps']
-			# [<am>, <amp>, 'amps']
-			# [<mp>, 'mps']
-			# ['ps']
-			# If the curly braced entry above matches, (but the one after it doesn't)
-			# we must log the index of the match, k, say, and disregard the next n rows' first k - n indices.
-		prev_match_i_and_j = (0, 0)
-		for i, row in enumerate(smaller_words_substrings):
-			rows_since_last_match = i - prev_match_i_and_j[0]
-			for j, substring in enumerate(row):
-				if substring not in bigger_word:
-					# Ignore when NEVER had a match.
-					if prev_matching_substring == NO_MATCH:
-						break
-					# See PART 1 above for reasoning.
-					add_entry(prev_matching_substring, bigger_word, length_difference)
-					prev_match_i_and_j = i, j # see PART 2 above for reasoning.
-
-					# Flush the buffer so we know, upon loop end, whether the last remaining prev_match
-					# has been accounted for. (Imagine a scenario where the very last checked substring
-					# happens to perfectly match. In such cases, the "substring not in bigger_word" branch
-					# would never run. Therefore, we must check for prev_match after the loop as well.)
-					preserved_prev_substring_match = prev_matching_substring[0] # Preserve this for debug.
-					prev_matching_substring = NO_MATCH
-					# The above case also guarantees no more matches in this row.
-					break
-				# Substring is in bigger word. As per PART 2 above,
-				# we must ascertain this current column "does not lie in a previous mask's shadow."
-				elif j >= (prev_match_i_and_j[1] - rows_since_last_match):
-					# Store this in the buffer to be added upon first lack of match.
-					prev_matching_substring = (substring, i)
-					#print('{} will be added later...'.format(prev_matching_substring))
-				else:
-					pass
-					#print('{}: Skipping substring "{}" as a right-aligned substring of the previous match, "{}"'.format( \
-					#	entry_word, substring, preserved_prev_substring_match))
-
-			if prev_matching_substring != NO_MATCH:
-				add_entry(prev_matching_substring, bigger_word, length_difference)
-		return matches
-	# The original method of Dedina and Nusbaum. Words begin left-aligned and end right-aligned.
-	# Given some word (input_word) we wish to pronounce alongside some entry_word and its phonemes,
-	# Return matches, a list of tuples representing matching substrings to add to the lattice.
-	@staticmethod
-	def populate_legacy(input_word, entry_word, phonemes):
-		matches = []
-		length_difference = len(input_word) - len(entry_word)
-		# a is always the longer word.
-		a, b = (input_word, entry_word) if length_difference >= 0 else (entry_word, input_word)
-		for offset in range(abs(length_difference) + 1):
-			index = -1
-			length = 0
-			match = ''
-			char_buffer = [False, False]
-			for k in range(0, len(b) + 1):
-				# Iterate buffer.
-				char_buffer[0] = char_buffer[1] # Begin False (default).
-				char_buffer[1] = (b[k] == a[offset + k]) if k != len(b) else False # End False.
-				# Currently in the middle of a match.
-				if all(char_buffer):
-					length += 1
-					match += b[k] # Append to match.
-				# Match just started.
-				elif char_buffer == [False, True]:
-					index = k
-					length = 1
-					match = b[k] # Flush match.
-				# Match just ended.
-				elif char_buffer == [True, False]:
-					# Insufficient length.
-					if length == 1:
-						continue
-					if length_difference < 0:
-						# When the entry word is bigger, phoneme indices "shift right" to remain accurate.
-						matches.append((match, phonemes[index + offset : index + offset + length], index, entry_word))
-					else:
-						# When the entry word is smaller, matched indices "shift right" to remain accurate.
-						matches.append((match, phonemes[index : index + length], index + offset, entry_word))
-		return matches
-
-	# A group of words to be run by a single process.
-	# Assumes legacy method if three arguments are passed, else uses precalculated.
-	@staticmethod
-	def populate_batch(input_word, entry_dict_batch, substrings_dict_batch=None):
-		func = PronouncerByAnalogy.populate_legacy
-		if substrings_dict_batch != None:
-			func = PronouncerByAnalogy.populate_precalculated
-		matches = []
-		for entry_word in entry_dict_batch:
-			if substrings_dict_batch == None:
-				matches += func(input_word, entry_word, entry_dict_batch[entry_word])
-			else:
-				matches += func(input_word, entry_word, entry_dict_batch[entry_word], substrings_dict_batch[entry_word])
-		return matches
 
 	def pronounce_sentence(self, input_sentence, multiprocess_words=True):
 		import time
@@ -322,21 +162,23 @@ class PronouncerByAnalogy:
 		# Results will be a list of dicts. Each dict represents a set of evaluation methods mapped to their top candidate
 		# for that word.
 		results_list = []
+		pm = None
+		if USE_EXPERIMENTAL_PATTERNMATCHER:
+			pm = self.pm
+
 		if not multiprocess_words:
 			for word in input_words:
-				pm = None
-				if USE_EXPERIMENTAL_PATTERNMATCHER:
-					pm = self.pm
 				results_list.append(PronouncerByAnalogy.pronounce(word, self.lexical_database, self.substring_database, pm=pm))
 		else:
 			import multiprocessing as mp
 			num_processes = mp.cpu_count()
 			pool = mp.Pool(processes=num_processes)
 			results_list = pool.starmap(PronouncerByAnalogy.pronounce, \
-				([word, self.lexical_database, self.substring_database] \
+				([word, self.lexical_database, self.substring_database, pm] \
 				for word in input_words))
-
-		for candidates_dict in results_list:
+		# pronounce returns a dict of entries AND a float value.
+		for tup in results_list:
+			candidates_dict = tup[0]
 			for key in candidates_dict:
 				if len(candidates_dict) == 1 or key == '10100':
 					# Convert from Candidate back to string.
@@ -351,51 +193,12 @@ class PronouncerByAnalogy:
 		print(' '.join(output_sentence))
 		return
 
-
-
-	@staticmethod
-	def manage_batch_populate(pl, input_word, lexical_database, substring_database, verbose=False):
-		import multiprocessing as mp
-		import math
-		# Chunking dicts courtesy https://stackoverflow.com/a/66555740/12572922
-		def chunks(data, data2=None, SIZE=10000):
-			from itertools import islice
-			it1 = iter(data)
-			if data2==None:
-				for i in range(0, len(data), SIZE):
-					yield {k:data[k] for k in islice(it1, SIZE)}
-				return
-
-			it2 = iter(data2)
-			for i in range(0, len(data), SIZE):
-				yield {k:data[k] for k in islice(it1, SIZE)}, {k:data2[k] for k in islice(it2, SIZE)}
-		# Spawns multiple processes for matching patterns within the lexical database.
-		num_processes = mp.cpu_count()
-		pool = mp.Pool(processes=num_processes)
-		if USE_LEGACY:
-			processes = [pool.apply_async(PronouncerByAnalogy.populate_batch, args=( \
-				input_word, lexical_subset)) \
-				for lexical_subset in chunks(lexical_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
-		# Better method (unfortunately does not benefit from multiprocessing.)
-		else:
-			processes = [pool.apply_async(PronouncerByAnalogy.populate_batch, args=( \
-				input_word, lexical_subset, substring_subset)) \
-				for lexical_subset, substring_subset in chunks(lexical_database, substring_database, SIZE=math.ceil(len(lexical_database)/num_processes)) ]
-
-		list_of_lists_of_matches = [p.get() for p in processes]
-		matches = [item for sublist in list_of_lists_of_matches for item in sublist]
-		for match in matches:
-			if match == []:
-				continue
-			pl.add(*match)
-		return pl, len(matches)
-
 	def timed_pronounce(self, input_word, lexical_database, substring_database, verbose=False, attempt_bypass=False, pm=None):
 		results, duration = PronouncerByAnalogy.pronounce(input_word, lexical_database, substring_database, verbose=verbose, attempt_bypass=attempt_bypass, pm=pm)
 		return results, duration
 
 	@staticmethod
-	def pronounce(input_word, lexical_database, substring_database, verbose=False, attempt_bypass=False, pm=None):
+	def pronounce(input_word, lexical_database, substring_database, pm, verbose=False, attempt_bypass=False):
 		import time
 
 		if attempt_bypass and input_word in lexical_database:
@@ -412,24 +215,23 @@ class PronouncerByAnalogy:
 		# Populate lattice.
 		match_count = 0
 		time_before = time.perf_counter()
+		# New, optimized method with current PatternMatcher.
 		if pm is not None:
 			matches = pm.populate_optimized(input_word)
 			for match in matches:
 				key, alt_domain_representation, row_index, count = match
 				match_count += count
 				pl.add_forced(*match)
-
-		elif MULTIPROCESS_LATTICES:
-			pl, matches = PronouncerByAnalogy.manage_batch_populate(pl, \
+		# OldPatternMatcher with multiprocessing.
+		elif MULTIPROCESS_LEGACY:
+			pl, matches = OldPatternMatcher.manage_batch_populate(pl, \
 				input_word, lexical_database, substring_database, verbose=False)
+		# OldPatternMatcher without multiprocessing.
 		else:
 			for entry_word in lexical_database:
 				phonemes = lexical_database[entry_word] 
 				substrings = substring_database[entry_word]
-				if USE_LEGACY:
-					matches = PronouncerByAnalogy.populate_legacy(input_word, entry_word, phonemes)					
-				else:
-					matches = PronouncerByAnalogy.populate_precalculated(input_word, entry_word, phonemes, substrings)
+				matches = OldPatternMatcher.populate(input_word, entry_word, phonemes, None)
 				for match in matches:
 					pl.add(*match)
 					match_count += 1
@@ -466,8 +268,10 @@ class PronouncerByAnalogy:
 
 	def compare_experimental(self, input_word, verbose=False, pm=None):
 		pm = None
+		# Old method.
 		results1, dur1 = pba.timed_pronounce(input_word, self.lexical_database, self.substring_database, verbose=verbose, pm=pm)
 		pm = self.pm
+		# New, experimental method.
 		results2, dur2 = pba.timed_pronounce(input_word, self.lexical_database, self.substring_database, verbose=verbose, pm=pm)
 		print('Without experimental: ', end='')
 		print(['{}: {}'.format(key, str(results1[key])) for key in results1])
@@ -476,18 +280,19 @@ class PronouncerByAnalogy:
 		print('Same answers? {}. Speedup: {}x faster.'.format(results1==results2, dur1/dur2))
 
 if __name__ == "__main__":
-	pba = PronouncerByAnalogy("Preprocessing/Out/output_c_2023-11-11-09-08-47.txt")
-	
-	pba.compare_experimental('deliberation')
-	#USE_EXPERIMENTAL_PATTERNMATCHER = False
-	#pba = PronouncerByAnalogy("Preprocessing/Out/output_c_2023-11-11-09-08-47.txt")
-	#pba.cross_validate_pronounce('interpretation', verbose=True)
-	#pba.cross_validate_pronounce('merit', verbose=True)
-	#pba.cross_validate_pronounce('mandatory', verbose=True)
-	#pba.pronounce('test', pba.lexical_database, pba.substring_database, verbose=True)
-	#pba.pronounce('uqauqauqauqauqauqa', verbose=True)
-	#pba.cross_validate_pronounce('test', verbose=True)
-	#pba.pronounce('jumps', pba.lexical_database, pba.substring_database, verbose=True)
-	#pba.pronounce_sentence('The quick brown fox jumps over the lazy harpsicheleon.', multiprocess_words=False)
+	USE_EXPERIMENTAL_PATTERNMATCHER = True
+	MULTIPROCESS_LEGACY = False
 
+	pba = PronouncerByAnalogy("Preprocessing/Out/output_c_2023-11-11-09-08-47.txt")
+	print('\nComparing old method to new method\n(Always uses new method):\n')
+	pba.compare_experimental('deliberation')
+
+	print('\nPronouncing a sentence with the new method:\n')
+	pba.pronounce_sentence('The QUICK brown FOX jumps OVER the LAZY dog.', multiprocess_words=False)
+
+	print('\nTesting a word that is clearly not in the dataset\n(Always uses new method):\n')
+	pba.pronounce('hyperliminationatory', pba.lexical_database, pba.substring_database, pba.pm, verbose=True)
+
+	print('\nRemove the test word from the dataset before attempt:\n')
+	pba.cross_validate_pronounce('testing', verbose=True)
 

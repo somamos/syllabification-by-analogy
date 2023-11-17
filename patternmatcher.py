@@ -211,6 +211,7 @@ class PatternMatcher:
 	# Don't forget to add it back later!
 	# Returns true if removed. Returns false if it didn't exist in the first place.
 	def remove(self, input_word, input_altrep):
+		print('Attempting to remove {} ({}) from the optimized dataset'.format(input_word, input_altrep))
 		# Helper function 1.
 		def generate_substrings_largest_first(a):
 			return [[a[l:l + len(a) + 1 - i] for l in range(i)] for i in range(1, len(a))]
@@ -263,8 +264,6 @@ class PatternMatcher:
 		# Main loop of the method.
 		input_word_substrings = generate_substrings_largest_first(input_word)
 		input_altrep_substrings = generate_substrings_largest_first(input_altrep)
-		print(input_word_substrings)
-		print(input_altrep_substrings)
 		for i, row in enumerate(input_word_substrings):
 			for j in range(len(row)):
 				decrement_or_delete(input_word_substrings[i][j], input_altrep_substrings[i][j])
