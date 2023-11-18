@@ -88,7 +88,7 @@ By the way, the pronunciation representations will seem like gibberish until you
 ## todo:
 
 1. preprocess.py
-    - [ ] Build version of dataset c that only contains words from dataset a∩b.
+    - [ ] Build and cross-validate version of dataset c that only contains words from dataset a∩b.
 2. align.py
     - [X] Prioritize encodings' nucleus locations during alignment (list of index tuples?).
     - [X] Rewrite description of "suppression above the diagonal."
@@ -100,10 +100,9 @@ By the way, the pronunciation representations will seem like gibberish until you
     - [X] Call off search at a certain number of candidate paths reached during bfs.
     - [X] Refactor to prepare for syllabification (generalize Lattice).
     - [X] Bug fix: right-aligned substrings of substrings still count as duplicate matches. (tori -> ori -> ri).
-    - [ ] Multiprocessing at word level for cross validation.
     - [X] Multiprocessing at "pattern matching" level.
     - [X] Rewrite a "complete matching" method that benefits from multiprocessing (populate_precalculated doesn't).
-    - [ ] Multiprocessing at BFS for long words (20+ characters).
+    - [ ] Multiprocessing at word level for cross validation.
     - [ ] Write a convenient way to compare two datasets' results.
     - [ ] Track the worst-performing input letters, output phonemes, and most challenging ground truth phonemes. 
 4. sba.py
@@ -112,6 +111,9 @@ By the way, the pronunciation representations will seem like gibberish until you
 5. patternmatcher.py
     - [x] Test new and improved pattern matcher.
     - [X] Port previous methods to oldpatternmatcher.py
+    - [ ] Determine why lattices differ slightly between populate_optimized and populate_precalculated_legacy.   
+6. lattice.py
+    - [ ] Faster BFS. (Multiprocessing?)
 
 # Overview 
 
