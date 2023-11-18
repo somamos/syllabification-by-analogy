@@ -3,6 +3,7 @@ class PatternMatcher:
 		import pickle
 		# Check for previous optimization dict and load it if applicable.
 		try:
+			print('Attempting to load previous save...')
 			f = open('Data/optimization_dict', 'rb')
 			self.substring_to_alt_domain_count_dict = pickle.load(f)
 			f.close()
@@ -183,7 +184,7 @@ class PatternMatcher:
 					if alt_domain_substring_counts[alt_domain_representation] < 0:
 						# Given "substrings of substrings' counts are necessarily more frequent than their superstrings' counterparts",
 						# This should never happen.
-						print('WARNING. Logic was not sound with representation {} of count {}.'.format(alt_domain_representation, \
+						print('WARNING. Logic was not sound with representation "{}" of count {}.'.format(alt_domain_representation, \
 							alt_domain_substring_counts[alt_domain_representation]))
 					matches.append(match)
 		return matches

@@ -109,15 +109,20 @@ class PronouncerByAnalogy:
 		# Assign Lexical Database.
 		self.lexical_database = {}
 		self.substring_database = {}
+		lines = 0
 		with open(dataset_path, 'r', encoding='latin-1') as f:
 			for line in f:
+				if lines%10000 == 0:
+					print('{} lines loaded...'.format(lines))
 				line = line.split()
 				self.lexical_database[line[0]] = line[1]
 				self.substring_database[line[0]] = [[line[0][i:j] for j in range(i, len(line[0]) + 1) \
 					if j - i > 1] for i in range(0, len(line[0]) - 1)]
 
+				lines += 1
 				if verbose:
 					print('{}\n{}\n{}\n\n'.format(line[0], line[1], self.substring_database[line[0]]))
+		print('{} lines loaded.'.format(lines))
 		self.pm = PatternMatcher(self.lexical_database)
 		self.opm = OldPatternMatcher()
 
@@ -289,8 +294,9 @@ if __name__ == "__main__":
 
 	pba = PronouncerByAnalogy("Preprocessing/Out/output_c_2023-11-11-09-08-47.txt")
 
-	print('\nAscertain removing and adding back each word does not change the optimized dict:')
-	pba.pm.simulate_leaveoneout(pba.lexical_database, check_every=10000)
+	# Uncomment below to run a test that guarantees optimized dict structure will remain the same throughout cross validation
+	#print('\nAscertain removing and adding back each word does not change the optimized dict:')
+	#pba.pm.simulate_leaveoneout(pba.lexical_database, check_every=10000)
 
 	print('\nCompare old method to new method\n(Bypasses USE_EXPERIMENTAL_PATTERNMATCHER flag):\n')
 	pba.compare_experimental('deliberation')
@@ -298,10 +304,12 @@ if __name__ == "__main__":
 	print('\nPronounce a sentence with the new method:\n')
 	pba.pronounce_sentence('The QUICK brown FOX jumps OVER the LAZY dog.', multiprocess_words=False)
 
-	print('\nTesting a word that is clearly not in the dataset\n(Bypasses USE_EXPERIMENTAL_PATTERNMATCHER flag):\n')
+	print('\nTesting a word that is clearly not in the dataset\n(Bypasses USE_EXPERIMENTAL_PATTERNMATCHER flag):')
+	print('Notice how pathfinding via breadth-first-search is the current performance bottleneck.\n')
 	pba.pronounce('hyperliminationatory', pba.lexical_database, pba.substring_database, pba.pm, verbose=True)
 
 	print('\nRemove the test word from the dataset before attempt:\n')
 	pba.cross_validate_pronounce('testing', verbose=True)
 
-	print('\nCross validate with the new method.\n')
+	#print('\nCross validate with the new method.\n')
+	#pba.cross_validate()
