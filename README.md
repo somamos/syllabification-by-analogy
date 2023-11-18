@@ -1,5 +1,7 @@
 # syllabification-by-analogy
 
+Syllabification by Analogy is a way to infer syllable divisions of an unknown word. In summary, it involves 1) comparing the unknown word's substrings against a set of words' letters mapped to their known syllabified counterparts, 2) stringing together matches into a lattice structure (a graph of arcs linking nodes), and 3) evaluating the "best" complete path through that structure by a set of heuristics. Pronunciation by Analogy does the same thing but maps words' spellings to the pronunciation domain.
+
 Although titled syllabification-by-analogy, this repository's pronunciation-by-analogy method is currently far superior. See immediately below:
 
 ## PbA. Now 300x faster. (11/17/2023)
