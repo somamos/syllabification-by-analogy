@@ -98,9 +98,12 @@ class PatternMatcher:
 	# alternate domain representations map onto those of the sub-substring's.
 
 	# Returns a list of tuples of the form (substr, phonemes[i : i + len(substr)], index, count(!))
-	def populate_optimized(self, input_word, verbose=False):
+	def populate_optimized(self, input_word, verbose=True):
 		matches = []
 		input_letter_substrings_smallest_first = PatternMatcher.generate_substrings_smallest_first(input_word)
+		# Prevent over-decrementing by adding successfully decremented "encompassing representations" to a set.
+		# Over-decrementing occurs when the same substring matches twice in a word as with "tartar" and "murmur""
+		decremented = set()
 
 		input_substrings_to_alt_domain_count = {}
 		for row in input_letter_substrings_smallest_first:
@@ -108,54 +111,55 @@ class PatternMatcher:
 				# Skip instances not present.
 				if self.substring_to_alt_domain_count_dict.get(key, None) == None:
 					continue
-
+				print(key)
 				alt_domain_substring_counts = self.substring_to_alt_domain_count_dict[key].copy()  # i.e. {'sc--s': 6, 's-Wse': 2, 'sc-sx': 1}
+				# Map this input substring to an inner dict of every possible representation mapped to its count
 				input_substrings_to_alt_domain_count[key] = alt_domain_substring_counts
 
+				# Now we must "prevent substring of substrings from counting twice."
+				# Skip substrings who have no valid substrings.
 				if len(key) <= 2:
 					continue
-				# Decrement left subkeys' counts by each extant representation.
+				# Decrement left subkeys' counts by c, the CURRENT key's counts. That is, c of subkey's counts
+				# are "thanks to" this current key.
 				alt_domain_representations = alt_domain_substring_counts.keys()
+				print('REPRESENTATIONS OF {}: {}'.format(key, alt_domain_representations))
 				for representation in alt_domain_representations:
-					keys_containing_representation = self.alt_domain_to_keys[representation]
-					for key_ in keys_containing_representation:
-						if key_ not in input_substrings_to_alt_domain_count:
-							continue
-						# Thanks to "smallest_first" we know that the subkeys of key_ must also 
-						# be in input_substrings_to_alt_domain_count.
-						left_subkey = key_[:-1]
-						left_altrep = representation[:-1]
-						if verbose:
-							print('Representation {} found in substrings.'.format(key_))
-							print('Left subkey: {}, Left altrep: {}'.format( \
-								left_subkey, left_altrep))
-							print('Current count of input_substrings_to_alt_domain_count[{}][{}]: {}'.format(left_subkey, left_altrep, \
-								input_substrings_to_alt_domain_count[left_subkey][left_altrep]))
-							print('Decrementing by the encompassing representation input_substrings_to_alt_domain_count[{}][{}] of count: {}'.format( \
-								key, representation, input_substrings_to_alt_domain_count[key][representation]))
+					# Thanks to "smallest_first" we know that the subkeys of key_ must also 
+					# be in input_substrings_to_alt_domain_count.
+					left_subkey = key[:-1]
+					left_altrep = representation[:-1]
+					if verbose:
+						print('Representation {} found in substrings.'.format(key))
+						print('Left subkey: {}, Left altrep: {}'.format( \
+							left_subkey, left_altrep))
+						print('Current count of input_substrings_to_alt_domain_count[{}][{}]: {}'.format(left_subkey, left_altrep, \
+							input_substrings_to_alt_domain_count[left_subkey][left_altrep]))
+						print('Decrementing by the encompassing representation input_substrings_to_alt_domain_count[{}][{}] of count: {}'.format( \
+							key, representation, input_substrings_to_alt_domain_count[key][representation]))
 
-						input_substrings_to_alt_domain_count[left_subkey][left_altrep] -= input_substrings_to_alt_domain_count[key][representation]
+					input_substrings_to_alt_domain_count[left_subkey][left_altrep] -= input_substrings_to_alt_domain_count[key][representation]
 
-						if verbose:
-							print('New count of input_substrings_to_alt_domain_count[{}][{}]: {}'.format(left_subkey, left_altrep, \
-								input_substrings_to_alt_domain_count[left_subkey][left_altrep]))
-						# Every last item per row requires a right subkey to be decremented as well.
-						if row_index + 1 < len(row):
-							continue
-						right_subkey = key_[1:]
-						right_altrep = representation[1:]
-						if verbose:
-							print('CURRENT SUBSTRING {} ENDS WORD {}. Right subkey must be decremented.'.format(key, input_word))
-							print('Current count of input_substrings_to_alt_domain_count[{}][{}]: {}'.format(right_subkey, right_altrep, \
-								input_substrings_to_alt_domain_count[right_subkey][right_altrep]))
-							print('Decrementing by the encompassing representation input_substrings_to_alt_domain_count[{}][{}] of count: {}'.format( \
-								key, representation, input_substrings_to_alt_domain_count[key][representation]))
-						
-						input_substrings_to_alt_domain_count[right_subkey][right_altrep] -= input_substrings_to_alt_domain_count[key][representation]
-						
-						if verbose:
-							print('New count of input_substrings_to_alt_domain_count[{}][{}]: {}'.format(right_subkey, right_altrep, \
-								input_substrings_to_alt_domain_count[right_subkey][right_altrep]))
+					if verbose:
+						print('New count of input_substrings_to_alt_domain_count[{}][{}]: {}'.format(left_subkey, left_altrep, \
+							input_substrings_to_alt_domain_count[left_subkey][left_altrep]))
+					# Every last item per row requires a right subkey to be decremented as well.
+					if row_index + 1 < len(row):
+						continue
+					right_subkey = key[1:]
+					right_altrep = representation[1:]
+					if verbose:
+						print('CURRENT SUBSTRING {} ENDS WORD {}. Right subkey must be decremented.'.format(key, input_word))
+						print('Current count of input_substrings_to_alt_domain_count[{}][{}]: {}'.format(right_subkey, right_altrep, \
+							input_substrings_to_alt_domain_count[right_subkey][right_altrep]))
+						print('Decrementing by the encompassing representation input_substrings_to_alt_domain_count[{}][{}] of count: {}'.format( \
+							key, representation, input_substrings_to_alt_domain_count[key][representation]))
+					
+					input_substrings_to_alt_domain_count[right_subkey][right_altrep] -= input_substrings_to_alt_domain_count[key][representation]
+					
+					if verbose:
+						print('New count of input_substrings_to_alt_domain_count[{}][{}]: {}'.format(right_subkey, right_altrep, \
+							input_substrings_to_alt_domain_count[right_subkey][right_altrep]))
 		# Populate matches with the final counts.
 		for row in input_letter_substrings_smallest_first:
 			# row_index here is index within the word:
