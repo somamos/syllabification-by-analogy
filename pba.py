@@ -298,18 +298,18 @@ if __name__ == "__main__":
 	#print('\nAscertain removing and adding back each word does not change the optimized dict:')
 	#pba.pm.simulate_leaveoneout(pba.lexical_database, check_every=10000)
 
-	print('\nCompare old method to new method\n(Bypasses USE_EXPERIMENTAL_PATTERNMATCHER flag):\n')
-	pba.compare_experimental('deliberation')
+	#print('\nCompare old method to new method\n(Bypasses USE_EXPERIMENTAL_PATTERNMATCHER flag):\n')
+	#pba.compare_experimental('cap')
 
-	print('\nPronounce a sentence with the new method:\n')
-	pba.pronounce_sentence('The QUICK brown FOX jumps OVER the LAZY dog.', multiprocess_words=False)
+	#print('\nPronounce a sentence with the new method:\n')
+	#pba.pronounce_sentence('The QUICK brown FOX jumps OVER the LAZY dog.', multiprocess_words=False)
 
 	print('\nTesting a word that is clearly not in the dataset\n(Bypasses USE_EXPERIMENTAL_PATTERNMATCHER flag):')
 	print('Notice how pathfinding via breadth-first-search is the current performance bottleneck.\n')
-	pba.pronounce('hyperliminationatory', pba.lexical_database, pba.substring_database, pba.pm, verbose=True)
+	pba.pronounce('solsolsolsolsol', pba.lexical_database, pba.substring_database, pba.pm, verbose=True)
 
-	print('\nRemove the test word from the dataset before attempt:\n')
-	pba.cross_validate_pronounce('testing', verbose=True)
+	#print('\nRemove the test word from the dataset before attempt:\n')
+	#pba.cross_validate_pronounce('testing', verbose=True)
 
 	#print('\nCross validate with the new method.\n')
 	#pba.cross_validate()

@@ -86,7 +86,7 @@ class PatternMatcher:
 	# alternate domain representations map onto those of the sub-substring's.
 
 	# Returns a list of tuples of the form (substr, phonemes[i : i + len(substr)], index, count(!))
-	def populate_optimized(self, input_word, verbose=True):
+	def populate_optimized(self, input_word, verbose=False):
 		matches = []
 		input_letter_substrings_smallest_first = PatternMatcher.generate_substrings_smallest_first(input_word)
 		# Prevent over-decrementing by adding successfully decremented "encompassing representations" to a set.
@@ -99,7 +99,6 @@ class PatternMatcher:
 				# Skip instances not present.
 				if self.substring_to_alt_domain_count_dict.get(key, None) == None:
 					continue
-				print(key)
 				alt_domain_substring_counts = self.substring_to_alt_domain_count_dict[key].copy()  # i.e. {'sc--s': 6, 's-Wse': 2, 'sc-sx': 1}
 				# Map this input substring to an inner dict of every possible representation mapped to its count
 				input_substrings_to_alt_domain_count[key] = alt_domain_substring_counts
@@ -111,12 +110,21 @@ class PatternMatcher:
 				# Decrement left subkeys' counts by c, the CURRENT key's counts. That is, c of subkey's counts
 				# are "thanks to" this current key.
 				alt_domain_representations = alt_domain_substring_counts.keys()
-				print('REPRESENTATIONS OF {}: {}'.format(key, alt_domain_representations))
 				for representation in alt_domain_representations:
+					# We prevent a single representation from decrementing its subrepresentations more than once.
+					if '{}_{}'.format(key, representation) in decremented:
+						if verbose:
+							print('NOTICE: prevented {} ({}) from decrementing left subkey {} ({}) again.'.format(key, representation, key[:-1], representation[:-1]))
+							if row_index + 1 == len(row):
+								print('Right subkey {} ({}) would\'ve been decremented, too'.format(key[1:], representation[1:]))
+						continue
+					decremented.add('{}_{}'.format(key, representation))
+
 					# Thanks to "smallest_first" we know that the subkeys of key_ must also 
 					# be in input_substrings_to_alt_domain_count.
 					left_subkey = key[:-1]
 					left_altrep = representation[:-1]
+
 					if verbose:
 						print('Representation {} found in substrings.'.format(key))
 						print('Left subkey: {}, Left altrep: {}'.format( \
@@ -144,6 +152,7 @@ class PatternMatcher:
 							key, representation, input_substrings_to_alt_domain_count[key][representation]))
 					
 					input_substrings_to_alt_domain_count[right_subkey][right_altrep] -= input_substrings_to_alt_domain_count[key][representation]
+
 					
 					if verbose:
 						print('New count of input_substrings_to_alt_domain_count[{}][{}]: {}'.format(right_subkey, right_altrep, \
