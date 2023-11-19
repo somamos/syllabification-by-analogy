@@ -1,15 +1,22 @@
 # syllabification-by-analogy
 
-Syllabification by Analogy is a way to infer syllable divisions of an unknown word. In summary, it involves 1) comparing the unknown word's substrings against a set of words' letters mapped to their known syllabified counterparts, 2) stringing together matches into a lattice structure (a graph of arcs linking nodes), and 3) evaluating the "best" complete path through that structure by a set of heuristics. Pronunciation by Analogy does the same thing but maps words' spellings to the pronunciation domain.
+Syllabification by Analogy (SbA) is a way to infer syllable divisions of an unknown word. 
+
+In summary, SbA involves:
+
+1. comparing the unknown word's substrings against a large set of words mapped to their known syllabified counterparts,
+2. stringing together matches into a lattice structure (a graph of arcs linking nodes), and
+3. evaluating the "best" complete path through that structure given some heuristics.
+
+Pronunciation by Analogy (PbA) does the same thing but maps words' spellings to the pronunciation domain. 
 
 Although titled syllabification-by-analogy, this repository's pronunciation-by-analogy method is currently far superior. See immediately below:
 
 ## PbA. Now 300x faster. (11/17/2023)
 
-Lattice construction gets a **HUGE performance boost**! Thanks to precalculating two ~16 MB dicts that store:
+Lattice construction gets a **HUGE performance boost**! Thanks to precalculating a ~16 MB dict. 
 
-1. every letter substring mapped to an inner dict of alternate domain representations, themselves mapped to the number of times those letter substrings align with those alternate domain representations in the database, i.e. `{sauce: {'sc--s': 6, 's-Wse': 2, 'sc-sx': 1}}`, and
-2. its effective inverse, alternate domain representations' substrings mapped to the set of letter substrings that serve as keys to that representation in (1) i.e. `{'sc--s': {'sauci', 'sauce'}`.
+New `patternmatcher.py` converts a lexical database of the form `{'word': 'phonemes'}` into an optimized dict of the form `{'substring': {'phonemes_1': count_1, 'phonemes_2': count_2, ...}}` -- that is, a dict of every letter substring mapped to an _inner_ dict of all its alternate domain representations, each one mapped to the number of times that representation aligns with that substring, i.e. `{sauce: {'sc--s': 6, 's-Wse': 2, 'sc-sx': 1}}`.
 
 ## Surpassing the original paper's results! (11/11/2023)
 The "leave-one-out" cross validation tests for __pronunciation by analogy__ AND __syllabification by analogy__ are complete. Compared to the results of M&D's original publication, this repository demonstrates considerable pronunciation improvement (below, left) and modest syllabification improvement (below, right), probably due to a greater number of words in the lexical database (58,989 versus 19,594).
@@ -17,6 +24,8 @@ The "leave-one-out" cross validation tests for __pronunciation by analogy__ AND 
 ![results_](https://github.com/somamos/syllabification-by-analogy/assets/141623014/f39516db-cd8d-4e1a-a0e5-8e99fd0dc45a)
 
 ## Quick Start
+
+Written on MacOS with Python 3.8.2 and Windows with Python 3.11.0.
 
 As of 11/17/2023, all preprocessed datasets are tracked with the repository -- no preprocessing needed! Just run `python pba.py` from the repository location after cloning. The top-level code has a few methods to get you started.
 
