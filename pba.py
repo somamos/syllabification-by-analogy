@@ -95,11 +95,12 @@ class PronouncerByAnalogy:
 				#print('{} vs. {}'.format(ground_truth, best[0]))
 				print()
 
-	def __init__(self, dataset_path, wordlist_path=None, verbose=False):
+	def __init__(self, dataset_filename, cross_validation_wordlist_path=None, verbose=False):
+		# For when you want to cross validate against another wordlist than yourself (note: this is ill-advised.)
 		self.cross_validation_wordlist = None
-		if wordlist_path is not None:
+		if cross_validation_wordlist_path is not None:
 			self.cross_validation_wordlist = []
-			with open(wordlist_path, 'r', encoding='latin-1') as e:
+			with open(cross_validation_wordlist_path, 'r', encoding='latin-1') as e:
 				for line in e:
 					# For cross validating with a previous version's wordlist.
 					line = line.split()
@@ -110,7 +111,7 @@ class PronouncerByAnalogy:
 		self.lexical_database = {}
 		self.substring_database = {}
 		lines = 0
-		with open(dataset_path, 'r', encoding='latin-1') as f:
+		with open('Preprocessing/Out/{}.txt'.format(dataset_filename), 'r', encoding='latin-1') as f:
 			for line in f:
 				if lines%10000 == 0:
 					print('{} lines loaded...'.format(lines))
@@ -123,7 +124,7 @@ class PronouncerByAnalogy:
 				if verbose:
 					print('{}\n{}\n{}\n\n'.format(line[0], line[1], self.substring_database[line[0]]))
 		print('{} lines loaded.'.format(lines))
-		self.pm = PatternMatcher(self.lexical_database)
+		self.pm = PatternMatcher(self.lexical_database, dataset_filename)
 		self.opm = OldPatternMatcher()
 
 	# Removes input word from the dataset before pronouncing if present.
@@ -292,7 +293,7 @@ if __name__ == "__main__":
 	USE_EXPERIMENTAL_PATTERNMATCHER = True
 	MULTIPROCESS_LEGACY = False
 
-	pba = PronouncerByAnalogy("Preprocessing/Out/output_c_2023-11-11-09-08-47.txt")
+	pba = PronouncerByAnalogy("output_c_2023-11-11-09-08-47")
 
 	# Uncomment below to run a test that guarantees optimized dict structure will remain the same throughout cross validation
 	#print('\nAscertain removing and adding back each word does not change the optimized dict:')
@@ -304,9 +305,9 @@ if __name__ == "__main__":
 	#print('\nPronounce a sentence with the new method:\n')
 	#pba.pronounce_sentence('The QUICK brown FOX jumps OVER the LAZY dog.', multiprocess_words=False)
 
-	print('\nTesting a word that is clearly not in the dataset\n(Bypasses USE_EXPERIMENTAL_PATTERNMATCHER flag):')
-	print('Notice how pathfinding via breadth-first-search is the current performance bottleneck.\n')
-	pba.pronounce('solsolsolsolsol', pba.lexical_database, pba.substring_database, pba.pm, verbose=True)
+	#print('\nTesting a word that is clearly not in the dataset\n(Bypasses USE_EXPERIMENTAL_PATTERNMATCHER flag):')
+	#print('Notice how pathfinding via breadth-first-search is the current performance bottleneck.\n')
+	#pba.pronounce('solsolsolsolsol', pba.lexical_database, pba.substring_database, pba.pm, verbose=True)
 
 	#print('\nRemove the test word from the dataset before attempt:\n')
 	#pba.cross_validate_pronounce('testing', verbose=True)

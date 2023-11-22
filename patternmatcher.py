@@ -1,19 +1,21 @@
 class PatternMatcher:
-	def __init__(self, word_to_alt_domain_dict):
+	# Loads optimized dict for that lexicon if one exists, else optimizes that lexicon.
+	def __init__(self, word_to_alt_domain_dict, word_to_alt_domain_filename):
+		formatted_name = 'optimized_{}'.format(word_to_alt_domain_filename)
 		import pickle
 		# Check for previous optimization dict and load it if applicable.
 		try:
-			print('Attempting to load previous save...')
-			f = open('Data/optimization_dict', 'rb')
+			print('Attempting to load previous optimization for {}...'.format(word_to_alt_domain_filename))
+			f = open('Data/{}'.format(formatted_name), 'rb')
 			self.substring_to_alt_domain_count_dict = pickle.load(f)
 			f.close()
 			print('Found and loaded previously saved optimization dict.')
 
 		except FileNotFoundError:
-			print('Optimization dicts not found. Loading from scratch.')
+			print('Optimization dicts not found. Optimizing {}.'.format(word_to_alt_domain_filename))
 			self.substring_to_alt_domain_count_dict = \
 				PatternMatcher.generate_optimization_dict(word_to_alt_domain_dict)
-			f = open('Data/optimization_dict', 'wb')
+			f = open('Data/{}'.format(formatted_name), 'wb')
 			pickle.dump(self.substring_to_alt_domain_count_dict, f)
 			f.close()
 
