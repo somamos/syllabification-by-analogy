@@ -16,8 +16,7 @@ class PronouncerByAnalogy:
 		now = datetime.today().strftime('%Y-%m-%d-%H-%M-%S')
 		total = 0
 		trial = start
-		# Cross validate either against itself OR against some specific wordlist (whose path was passed into the constructor.)
-		wordlist = list(self.lexical_database.keys()) if self.cross_validation_wordlist is None else self.cross_validation_wordlist
+		wordlist = list(self.lexical_database.keys())
 
 		trial_count = len(wordlist) - 1
 		trial_word = ''
@@ -95,16 +94,7 @@ class PronouncerByAnalogy:
 				#print('{} vs. {}'.format(ground_truth, best[0]))
 				print()
 
-	def __init__(self, dataset_filename, cross_validation_wordlist_path=None, verbose=False):
-		# For when you want to cross validate against another wordlist than yourself (note: this is ill-advised.)
-		self.cross_validation_wordlist = None
-		if cross_validation_wordlist_path is not None:
-			self.cross_validation_wordlist = []
-			with open(cross_validation_wordlist_path, 'r', encoding='latin-1') as e:
-				for line in e:
-					# For cross validating with a previous version's wordlist.
-					line = line.split()
-
+	def __init__(self, dataset_filename, verbose=False):
 		self.pl = None
 		print('Loading lexical database...')
 		# Assign Lexical Database.
