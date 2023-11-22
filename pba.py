@@ -269,21 +269,28 @@ class PronouncerByAnalogy:
 	def compare_experimental(self, input_word, verbose=False, pm=None):
 		pm = None
 		# Old method.
+		print('Old method:')
 		results1, dur1 = pba.timed_pronounce(input_word, self.lexical_database, self.substring_database, verbose=verbose, pm=pm)
 		pm = self.pm
 		# New, experimental method.
+		print('Experimental:')
 		results2, dur2 = pba.timed_pronounce(input_word, self.lexical_database, self.substring_database, verbose=verbose, pm=pm)
-		print('Without experimental: ', end='')
-		print(['{}: {}'.format(key, str(results1[key])) for key in results1])
-		print('With experimental: ', end='')
-		print(['{}: {}'.format(key, str(results2[key])) for key in results2])
+		print('Without experimental:\n', end='')
+		PronouncerByAnalogy.simple_print(results1)
+		print('With experimental:\n', end='')
+		PronouncerByAnalogy.simple_print(results2)
 		print('Same answers? {}. Speedup: {}x faster.'.format(results1==results2, dur1/dur2))
 
 if __name__ == "__main__":
 	USE_EXPERIMENTAL_PATTERNMATCHER = True
 	MULTIPROCESS_LEGACY = False
 
-	pba = PronouncerByAnalogy("output_c_2023-11-11-09-08-47")
+	# Huge lexical dataset.
+	#pba = PronouncerByAnalogy("output_c_2023-11-11-09-08-47")
+	# Very small lexical dataset for testing.
+	pba = PronouncerByAnalogy("test_case")
+	pba.compare_experimental('table', verbose=True)
+	#pba.pronounce('table', pba.lexical_database, pba.substring_database, pba.pm, verbose=True)
 
 	# Uncomment below to run a test that guarantees optimized dict structure will remain the same throughout cross validation
 	#print('\nAscertain removing and adding back each word does not change the optimized dict:')
