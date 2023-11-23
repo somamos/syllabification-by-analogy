@@ -53,8 +53,8 @@ class Lattice:
 			#if any(self.from_words):
 			#	return '\n{}{}{}({}{}{}): {},  (from words {})'.format(self.from_node.phoneme, self.intermediate_phonemes, self.to_node.phoneme, \
 			#		self.from_node.matched_letter, self.intermediate_letters, self.to_node.matched_letter, self.count, self.from_words)			
-			return '\n{}{}{}({}{}{}): {}'.format(self.from_node.phoneme, self.intermediate_phonemes, self.to_node.phoneme, \
-				self.from_node.matched_letter, self.intermediate_letters, self.to_node.matched_letter, self.count)
+			return '\n{}{}{}({}{}{}): {}'.format(self.from_node.matched_letter, self.intermediate_letters, self.to_node.matched_letter,\
+				self.from_node.phoneme, self.intermediate_phonemes, self.to_node.phoneme, self.count)
 		def __hash__(self):
 			return hash((self.from_node, self.intermediate_phonemes, self.to_node))
 		# Accepts a list of nodes.
@@ -546,6 +546,9 @@ class Lattice:
 		print('COUNT OFFSET:')
 		print('unique_to_a_sum: {}, unique_to_b_sum: {}, a_shortage_sum: {}, a_surplus_sum: {}, unity_sum: {}'.format( \
 			unique_to_a_sum, unique_to_b_sum, a_shortage_sum, a_surplus_sum, unity_sum))
+
+		for arc in a_shortage:
+			print('{} vs {}'.format(str(arc[0]), str(arc[1])))
 
 
 
