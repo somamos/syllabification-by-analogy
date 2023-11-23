@@ -496,18 +496,25 @@ class Lattice:
 	#	a_b_unity is the subset of shared arcs such that diff = 0
 	@staticmethod
 	def print_lattice_comparison(a, b):
+		print('LATTICE COMPARISON:')
 		unique_to_a, unique_to_b, shared, a_shortage, a_surplus, a_b_unity = [], [], [], [], [], []
 		# Populate uniques and shared
+		unique_to_a_sum = 0
+		unique_to_b_sum = 0
 		for hash_ in a.arcs:
 			# Arcs not in b.
 			if hash_ not in b.arcs:
+				unique_to_a_sum += a.arcs[hash_].count
 				unique_to_a.append(a.arcs[hash_])
 			# Shared arcs.
 			else:
-				shared.append(a.arcs[hash_])
+				# Shared will be further disambiguated later, so do not factor in its counts yet.
+				# Append a tuple of the reference in a and its reference in b.
+				shared.append((a.arcs[hash_], b.arcs[hash_]))
 		# Arcs not in a.
 		for hash_ in b.arcs:
 			if hash_ not in a.arcs:
+				unique_to_b_sum += b.arcs[hash_].count
 				unique_to_b.append(b.arcs[hash_])
 		# Sanity check.
 
@@ -515,9 +522,31 @@ class Lattice:
 			print('Sanity check failed. {} + {} - 2*{} != {} + {}'.format(len(a.arcs), len(b.arcs), len(shared), len(unique_to_a), len(unique_to_b)))
 
 		print('{} arcs were shared, {} were unique to a, {} were unique to b.'.format(len(shared), len(unique_to_a), len(unique_to_b)))
+		a_shortage_sum = 0
+		a_surplus_sum = 0
+		unity_sum = 0
 		# Split shared into a_shortage, a_surplus, and a_b_unity.
-		for arc_ in shared:
-			pass
+		for arc_in_a, arc_in_b in shared:
+			diff = arc_in_a.count - arc_in_b.count
+			if diff < 0:
+				a_shortage_sum += diff
+				a_shortage.append((arc_in_a, arc_in_b))
+			elif diff > 0:
+				a_surplus_sum += diff
+				a_surplus.append((arc_in_a, arc_in_b))
+			else:
+				a_b_unity.append((arc_in_a, arc_in_b))
+				unity_sum += arc_in_a.count
+		# Sanity check.
+		if len(a_shortage) + len(a_surplus) + len(a_b_unity) != len(shared):
+			print('Sanity check #2 failed: {} + {} + {} != {}'.format(len(a_shortage), len(a_surplus), len(a_b_unity), len(shared)))
+		print('Of the {} shared arcs:\n  {} had fewer counts in a ({}),\n  {} had greater counts in a ({}), and\n  {} had the same counts in both ({})'.format( \
+			len(shared), len(a_shortage), a_shortage_sum, len(a_surplus), a_surplus_sum, len(a_b_unity), unity_sum))
+
+		print('COUNT OFFSET:')
+		print('unique_to_a_sum: {}, unique_to_b_sum: {}, a_shortage_sum: {}, a_surplus_sum: {}, unity_sum: {}'.format( \
+			unique_to_a_sum, unique_to_b_sum, a_shortage_sum, a_surplus_sum, unity_sum))
+
 
 
 	def print_arcs(self):
