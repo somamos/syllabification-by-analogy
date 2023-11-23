@@ -94,7 +94,8 @@ class PronouncerByAnalogy:
 				#print('{} vs. {}'.format(ground_truth, best[0]))
 				print()
 
-	def __init__(self, dataset_filename, verbose=False):
+	# skip_every is -1 (disabled) or >= 2. Generates smaller datasets for easier testing.
+	def __init__(self, dataset_filename, skip_every=-1, offset=0, verbose=False):
 		self.pl = None
 		print('Loading lexical database...')
 		# Assign Lexical Database.
@@ -102,10 +103,15 @@ class PronouncerByAnalogy:
 		self.substring_database = {}
 		lines = 0
 		with open('Preprocessing/Out/{}.txt'.format(dataset_filename), 'r', encoding='latin-1') as f:
-			for line in f:
+			for i, line in enumerate(f):
+				# Skip every skip_every words.
+				if skip_every != -1 and (i + offset)%skip_every != 0:
+					continue
+
 				if lines%10000 == 0:
 					print('{} lines loaded...'.format(lines))
 				line = line.split()
+
 				self.lexical_database[line[0]] = line[1]
 				self.substring_database[line[0]] = [[line[0][i:j] for j in range(i, len(line[0]) + 1) \
 					if j - i > 1] for i in range(0, len(line[0]) - 1)]
@@ -114,8 +120,14 @@ class PronouncerByAnalogy:
 				if verbose:
 					print('{}\n{}\n{}\n\n'.format(line[0], line[1], self.substring_database[line[0]]))
 		print('{} lines loaded.'.format(lines))
-		self.pm = PatternMatcher(self.lexical_database, dataset_filename)
+		self.pm = PatternMatcher(self.lexical_database, dataset_filename, skip_every, offset)
 		self.opm = OldPatternMatcher()
+		# Save a copy of the lobotomized dataset, if applicable, for debug.
+		if skip_every == -1 and offset == 0:
+			return
+		with open('Data/{}_skip-every-{}_offset-{}.txt'.format(dataset_filename, skip_every, offset), 'w', encoding='latin-1') as f:
+			arr = list(['{:20} {:20}\n'.format(key, self.lexical_database[key]) for key in self.lexical_database])
+			f.writelines(arr)
 
 	# Removes input word from the dataset before pronouncing if present.
 	# Returns 
@@ -192,7 +204,7 @@ class PronouncerByAnalogy:
 		print(' '.join(output_sentence))
 		return
 
-	def timed_pronounce(self, input_word, lexical_database, substring_database, verbose=False, attempt_bypass=False, pm=None):
+	def test_pronounce(self, input_word, lexical_database, substring_database, verbose=False, attempt_bypass=False, pm=None):
 		results, duration, lattice = PronouncerByAnalogy.pronounce(input_word, lexical_database, substring_database, verbose=verbose, attempt_bypass=attempt_bypass, pm=pm, test_mode=True)
 		return results, duration, lattice
 
@@ -272,11 +284,11 @@ class PronouncerByAnalogy:
 		pm = None
 		# Old method.
 		print('Old method:')
-		results1, dur1, lattice1 = pba.timed_pronounce(input_word, self.lexical_database, self.substring_database, verbose=False, pm=pm)
+		results1, dur1, lattice1 = pba.test_pronounce(input_word, self.lexical_database, self.substring_database, verbose=False, pm=pm)
 		pm = self.pm
 		# New, experimental method.
 		print('Experimental:')
-		results2, dur2, lattice2 = pba.timed_pronounce(input_word, self.lexical_database, self.substring_database, verbose=False, pm=pm)
+		results2, dur2, lattice2 = pba.test_pronounce(input_word, self.lexical_database, self.substring_database, verbose=False, pm=pm)
 
 		# Compare lattices.
 		Lattice.print_lattice_comparison(lattice1, lattice2)

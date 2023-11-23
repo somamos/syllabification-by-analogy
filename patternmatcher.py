@@ -1,7 +1,11 @@
 class PatternMatcher:
 	# Loads optimized dict for that lexicon if one exists, else optimizes that lexicon.
-	def __init__(self, word_to_alt_domain_dict, word_to_alt_domain_filename):
+	def __init__(self, word_to_alt_domain_dict, word_to_alt_domain_filename, skip_every=-1, offset = 0):
 		formatted_name = 'optimized_{}'.format(word_to_alt_domain_filename)
+		# Append the skip factor if applicable.
+		formatted_name = formatted_name + '_skipping-every-' + str(skip_every) if skip_every != -1 else formatted_name
+		# Append offset if applicable.
+		formatted_name = formatted_name + '_offset-' + str(offset) if offset != 0 else formatted_name
 		import pickle
 		# Check for previous optimization dict and load it if applicable.
 		try:
