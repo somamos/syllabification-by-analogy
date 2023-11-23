@@ -125,6 +125,7 @@ By the way, the pronunciation representations will seem like gibberish until you
     - [ ] Determine why lattices differ slightly between populate_optimized and populate_precalculated_legacy.   
 6. lattice.py
     - [ ] Faster BFS. (Multiprocessing?)
+    - [ ] Point arcs to index-agnostic versions of themselves to speed up repeat occurrences within the same word?
 
 # Overview 
 
