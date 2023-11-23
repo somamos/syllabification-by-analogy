@@ -88,7 +88,7 @@ class PatternMatcher:
 	# alternate domain representations map onto those of the sub-substring's.
 
 	# Returns a list of tuples of the form (substr, phonemes[i : i + len(substr)], index, count(!))
-	def populate_optimized(self, input_word, verbose=True):
+	def populate_optimized(self, input_word, verbose=False):
 		# A shorter way to refer to the optimized dict
 		raw_counts = self.substring_to_alt_domain_count_dict
 		# Any matching key/representation pair with length l >= 3 has two subkeys/sub_representations of length length l - 1. 
@@ -110,30 +110,36 @@ class PatternMatcher:
 			return '{}({})'.format(key, representation)
 		# Given some parent, propagate ITS parents and their raw counts downward OR propagate its own raw counts downward.
 		def update_child_entries(key, representation):
+			nonlocal verbose
 			nonlocal child_hash_to_ancestor_set
 			parent_hash = make_hash(key, representation)
 			left_child_hash = make_hash(key[:-1], representation[:-1])
 			right_child_hash = make_hash(key[1:], representation[1:])
-			print('Informing {}\'s children {} and {} of its ancestors.'.format(parent_hash, left_child_hash, right_child_hash))
+			if verbose:
+				print('Informing {}\'s children {} and {} of its ancestors.'.format(parent_hash, left_child_hash, right_child_hash))
 
 			left_child_set = child_hash_to_ancestor_set.get(left_child_hash, set())
 			right_child_set = child_hash_to_ancestor_set.get(right_child_hash, set())
-			print('    left child set: {}\n    right child set: {}'.format(left_child_set, right_child_set))
+			if verbose:
+				print('    left child set: {}\n    right child set: {}'.format(left_child_set, right_child_set))
 			if parent_hash not in child_hash_to_ancestor_set:
-				print('  {} itself is a greatest common ancestor'.format(parent_hash))
+				if verbose:
+					print('  {} itself is a greatest common ancestor'.format(parent_hash))
 				# No previous parent pointed me to their counts.
 				# I therefore must propagate myself downward as the greatest common ancestor to my children.
 				left_child_set.add((key, representation))
 				right_child_set.add((key, representation))
 			else:
-				print('  {} itself had ancestors: {}'.format(parent_hash, child_hash_to_ancestor_set[parent_hash]))
+				if verbose:
+					print('  {} itself had ancestors: {}'.format(parent_hash, child_hash_to_ancestor_set[parent_hash]))
 				# This parent had least one greater ancestor to pass down. Pass it down instead of itself.
 				left_child_set = left_child_set.union(child_hash_to_ancestor_set[parent_hash])
 				right_child_set = right_child_set.union(child_hash_to_ancestor_set[parent_hash])
 			# Update child entries.
 			child_hash_to_ancestor_set[left_child_hash] = left_child_set
 			child_hash_to_ancestor_set[right_child_hash] = right_child_set
-			print('    updated left child set: {}\n    updated right child set: {}'.format(child_hash_to_ancestor_set[left_child_hash], child_hash_to_ancestor_set[right_child_hash]))
+			if verbose:
+				print('    updated left child set: {}\n    updated right child set: {}'.format(child_hash_to_ancestor_set[left_child_hash], child_hash_to_ancestor_set[right_child_hash]))
 			
 		for row in input_letter_substrings_largest_first:
 			for row_index, key in enumerate(row):
@@ -151,10 +157,12 @@ class PatternMatcher:
 				# Finally, notify our children of our own ancestors OR (if we have none) ourselves.
 				alt_domain_representations = alt_domain_substring_counts.keys()
 				for representation in alt_domain_representations:
-					print('CURRENT ROW INDEX: {},\nROW:{}\nREPRESENTATION:{}'.format(row_index, row, representation))
+					if verbose:
+						print('CURRENT ROW INDEX: {},\nROW:{}\nREPRESENTATION:{}'.format(row_index, row, representation))
 
 					key_rep_hash = make_hash(key, representation)
-					print('{} has {} occurrences in the lexical database.'.format(key_rep_hash, \
+					if verbose:
+						print('{} has {} occurrences in the lexical database.'.format(key_rep_hash, \
 						alt_domain_substring_counts[representation]))
 
 					# Short ones have no children.
@@ -168,13 +176,15 @@ class PatternMatcher:
 					# Decrement if applicable.
 					if key_rep_hash in child_hash_to_ancestor_set:
 						# Decrement by each greatest common ancestor.
-						print('  {}\'s entry in the database: {}'.format(key_rep_hash, child_hash_to_ancestor_set[key_rep_hash]))
+						if verbose:
+							print('  {}\'s entry in the database: {}'.format(key_rep_hash, child_hash_to_ancestor_set[key_rep_hash]))
 						for ancestor_key, ancestor_representation in child_hash_to_ancestor_set[key_rep_hash]:
 							ancestor_hash = make_hash(ancestor_key, ancestor_representation)
 							ancestor_raw_count = raw_counts[ancestor_key][ancestor_representation]
-							print('  Removed {} occurrences common to ancestor {}.'.format(ancestor_raw_count, ancestor_hash))
 							subset_of_optimized_dict[key][representation] -= ancestor_raw_count
-							print('  {} now has {} occurrences.'.format(key_rep_hash, subset_of_optimized_dict[key][representation]))
+							if verbose:
+								print('  Removed {} occurrences common to ancestor {}.'.format(ancestor_raw_count, ancestor_hash))
+								print('  {} now has {} occurrences.'.format(key_rep_hash, subset_of_optimized_dict[key][representation]))
 
 
 		# Populate matches with the final counts.
