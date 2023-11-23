@@ -69,12 +69,12 @@ class OldPatternMatcher:
 	# |||||||malignant  ->  malignant|||||||
 	# 
 	# Returns matches, a list of tuples representing matching substrings to add to the lattice.
+	
 	@staticmethod
 	def populate_precalculated_legacy(input_word, entry_word, phonemes, entry_substrings, verbose=False):
 		matches = []
-		def add_entry(substr_index_tuple, bigger_w, length_diff):
+		def add_entry(substr, i, bigger_w, length_diff):
 			import re
-			substr, i = substr_index_tuple
 			indices_in_bigger = [m.start() for m in re.finditer('(?={})'.format(substr), bigger_w)]
 			# Add to the lattice.
 			for bigger_index in indices_in_bigger:
@@ -100,7 +100,6 @@ class OldPatternMatcher:
 			# nd, nde, ndex,
 			# de, dex
 			# ex
-			# Much of the logic that follows hinges upon this ordering.
 			smaller_words_substrings = [[input_word[i:j] for j in range(i, len(input_word) + 1) \
 				if j - i > 1] for i in range(0, len(input_word) - 1)]
 			bigger_word = entry_word
@@ -112,82 +111,49 @@ class OldPatternMatcher:
 		if verbose:
 			print('Smaller words\' substrings: {}'.format(smaller_words_substrings))
 		NO_MATCH = ('', -1)
-		# PART 1: Prevent LEFT-ALIGNED substrings of matches, themselves, from matching.
-			# A tuple saving the previous match and its index.
-			# Due to the sorted order of (both input's and entries') precalculated substrings,
-			# A first NON-match often implies the previous substring DID match.
-			# To avoid double counting smaller sections of the same substring e.g.:
-			# to,
-			# tor,
-			# tori,
-			# we must only add items after the first nonmatch.
-		prev_matching_substring = NO_MATCH
-		# PART 2: Prevent RIGHT-ALIGNED substrings of matches, themselves, from matching.
-			# The above fix does not prevent
-			# tori,
-			#  ori,
-			#   ri
-			# from matching.
-			# ['cl', 'cla', 'clam', 'clamp', 'clamps']
-			# ['la', 'lam', {lamp}, 'lamps']
-			# [<am>, <amp>, 'amps']
-			# [<mp>, 'mps']
-			# ['ps']
-			# If the curly braced entry above matches, (but the one after it doesn't)
-			# we must log the index of the match, k, say, and disregard the next n rows' first k - n indices.
-		prev_match_i_and_j = (0, 0)
-		rows_since_last_match = 0
 		has_matched = False
+		# Add all entries indiscriminately, removing left-aligned and right-aligned substrings of bigger matches.
 		for i, row in enumerate(smaller_words_substrings):
-			rows_since_last_match += 1 if has_matched else 0
 			for j, substring in enumerate(row):
 				if substring not in bigger_word:
-					# Ignore when NEVER had a match.
-					if prev_matching_substring == NO_MATCH:
-						break
-					# See PART 1 above for reasoning.
-					has_added_largest_match = True
-					add_entry(prev_matching_substring, bigger_word, length_difference)
-					# Flush the buffer so we know, upon loop end, whether the last remaining prev_match
-					# has been accounted for. (Imagine a scenario where the very last checked substring
-					# happens to perfectly match. In such cases, the "substring not in bigger_word" branch
-					# would never run. Therefore, we must check for prev_match after the loop as well.)
-					preserved_prev_substring_match = prev_matching_substring # Preserve this for debug.
-					prev_matching_substring = NO_MATCH
-					# The above case also guarantees no more matches in this row.
+					# Because of the order from smallest to largest, no other substring in this row will match.
 					break
 				# Substring is in bigger word. As per PART 2 above,
 				# we must ascertain this current column "does not lie in a previous mask's shadow."
-				elif not has_matched:
-					# Reset rows since last match.
-					has_matched = True
-					rows_since_last_match = 0
-					# Store this in the buffer to be added upon first lack of match.
-					prev_matching_substring = (substring, i)
-					prev_match_i_and_j = i, j # see PART 2 above for reasoning.
-					if verbose:
-						print('PASS ON FIRST MATCH')
-						print('  {} will be added later...'.format(prev_matching_substring))
-				elif has_matched and j > (prev_match_i_and_j[1] - rows_since_last_match):
-					prev_matching_substring = (substring, i)
-					prev_match_i_and_j = i, j # see PART 2 above for reasoning.
-					if verbose:
-						print(' PASS: {} > {} - {}'.format(j, prev_match_i_and_j[1], rows_since_last_match))
-						print('  {} will be added later...'.format(prev_matching_substring))
 				else:
-					if verbose:
-						print(' FAIL: {} >= {} - {}'.format(j, prev_match_i_and_j[1], rows_since_last_match))
-						print('  {}: Skipping right-aligned substring  "{}" of previous match.'.format( \
-							entry_word, substring))
-					pass
+					# Add entry, deleting previous submatches.
+					add_entry(substring, i, bigger_word, length_difference)
+		# Remove matches that are substrings of larger matches.
+		matches_to_exclude = set()
+		for i, match in enumerate(matches):
+			letters, phonemes, index, _ = match
+			# Short ones cannot possibly have substrings.
+			if len(letters) < 3:
+				continue
 
-			if prev_matching_substring != NO_MATCH:
-				# Add previous entry.
-				add_entry(prev_matching_substring, bigger_word, length_difference)
-				# Flush buffer.
-				prev_matching_substring = NO_MATCH
+			matches_without_i = matches[:i] + matches[i + 1:]
+			for other_match in matches_without_i:
+				other_letters, other_phonemes, other_index, _ = other_match
+				# Length greater than or equal to match's cannot possibly be match's substring.
+				if len(other_letters) >= len(letters):
+					continue
+				# Letters outside match's range indicate other_ cannot possibly be match's substring.
+				if other_index < index or index + len(letters) < other_index + len(other_letters):
+					continue
+				# BOTH ends equal cannot possibly be a substring, because they're the same length.
+				# The difference between this condition and the last is the "AND."
+				if other_index == index and index + len(letters) == other_index + len(other_letters):
+					continue
+				# Lastly, we have to check if the phonemes map on to each other.
+				start = other_index - index # We know other_index >= index.
+				end = other_index - index + len(other_letters) # Algebra on the second condition above tells us this HAS to be less than len(letters).
+				if phonemes[start:end + 1] != other_phonemes:
+					continue
+				if verbose:
+					print('{} is a substring of {}'.format(other_match, match))
+				matches_to_exclude.add(other_match)
+		return list([match for match in matches if match not in matches_to_exclude])
 
-		return matches
 	# The original method of Dedina and Nusbaum. Words begin left-aligned and end right-aligned.
 	# Given some word (input_word) we wish to pronounce alongside some entry_word and its phonemes,
 	# Return matches, a list of tuples representing matching substrings to add to the lattice.
