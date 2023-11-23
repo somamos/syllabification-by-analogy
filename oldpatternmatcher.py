@@ -70,7 +70,7 @@ class OldPatternMatcher:
 	# 
 	# Returns matches, a list of tuples representing matching substrings to add to the lattice.
 	@staticmethod
-	def populate_precalculated_legacy(input_word, entry_word, phonemes, entry_substrings):
+	def populate_precalculated_legacy(input_word, entry_word, phonemes, entry_substrings, verbose=False):
 		matches = []
 		def add_entry(substr_index_tuple, bigger_w, length_diff):
 			import re
@@ -83,9 +83,13 @@ class OldPatternMatcher:
 					# The smaller word's starting index, then, is i, because of how input_precalculated_substrings are organized.
 					# Locate the indices in the entry word out of which to slice the phonemes.
 					matches.append((substr, phonemes[bigger_index : bigger_index + len(substr)], i, entry_word))
+					if verbose:
+						print('      Adding match {}'.format(matches[-1]))
 				# Input word is the bigger word.
 				else:
 					matches.append((substr, phonemes[i : i + len(substr)], bigger_index, entry_word))
+					if verbose:
+						print('      Adding match {}'.format(matches[-1]))
 
 		length_difference = len(input_word) - len(entry_word)
 		# Input word is shorter.
@@ -98,14 +102,15 @@ class OldPatternMatcher:
 			# ex
 			# Much of the logic that follows hinges upon this ordering.
 			smaller_words_substrings = [[input_word[i:j] for j in range(i, len(input_word) + 1) \
-				if j - i > 1] for i in range(0, len(input_word) + 1)]
-
+				if j - i > 1] for i in range(0, len(input_word) - 1)]
 			bigger_word = entry_word
 		else:
 			# entry_substrings were precalculated and are ordered as smaller_words_substrings above.
 			smaller_words_substrings = entry_substrings
 			bigger_word = input_word
 		preserved_prev_substring_match = ''
+		if verbose:
+			print('Smaller words\' substrings: {}'.format(smaller_words_substrings))
 		NO_MATCH = ('', -1)
 		# PART 1: Prevent LEFT-ALIGNED substrings of matches, themselves, from matching.
 			# A tuple saving the previous match and its index.
@@ -131,38 +136,57 @@ class OldPatternMatcher:
 			# If the curly braced entry above matches, (but the one after it doesn't)
 			# we must log the index of the match, k, say, and disregard the next n rows' first k - n indices.
 		prev_match_i_and_j = (0, 0)
+		rows_since_last_match = 0
+		has_matched = False
 		for i, row in enumerate(smaller_words_substrings):
-			rows_since_last_match = i - prev_match_i_and_j[0]
+			rows_since_last_match += 1 if has_matched else 0
 			for j, substring in enumerate(row):
 				if substring not in bigger_word:
 					# Ignore when NEVER had a match.
 					if prev_matching_substring == NO_MATCH:
 						break
 					# See PART 1 above for reasoning.
+					has_added_largest_match = True
 					add_entry(prev_matching_substring, bigger_word, length_difference)
-					prev_match_i_and_j = i, j # see PART 2 above for reasoning.
-
 					# Flush the buffer so we know, upon loop end, whether the last remaining prev_match
 					# has been accounted for. (Imagine a scenario where the very last checked substring
 					# happens to perfectly match. In such cases, the "substring not in bigger_word" branch
 					# would never run. Therefore, we must check for prev_match after the loop as well.)
-					preserved_prev_substring_match = prev_matching_substring[0] # Preserve this for debug.
+					preserved_prev_substring_match = prev_matching_substring # Preserve this for debug.
 					prev_matching_substring = NO_MATCH
 					# The above case also guarantees no more matches in this row.
 					break
 				# Substring is in bigger word. As per PART 2 above,
 				# we must ascertain this current column "does not lie in a previous mask's shadow."
-				elif j >= (prev_match_i_and_j[1] - rows_since_last_match):
+				elif not has_matched:
+					# Reset rows since last match.
+					has_matched = True
+					rows_since_last_match = 0
 					# Store this in the buffer to be added upon first lack of match.
 					prev_matching_substring = (substring, i)
-					#print('{} will be added later...'.format(prev_matching_substring))
+					prev_match_i_and_j = i, j # see PART 2 above for reasoning.
+					if verbose:
+						print('PASS ON FIRST MATCH')
+						print('  {} will be added later...'.format(prev_matching_substring))
+				elif has_matched and j > (prev_match_i_and_j[1] - rows_since_last_match):
+					prev_matching_substring = (substring, i)
+					prev_match_i_and_j = i, j # see PART 2 above for reasoning.
+					if verbose:
+						print(' PASS: {} > {} - {}'.format(j, prev_match_i_and_j[1], rows_since_last_match))
+						print('  {} will be added later...'.format(prev_matching_substring))
 				else:
+					if verbose:
+						print(' FAIL: {} >= {} - {}'.format(j, prev_match_i_and_j[1], rows_since_last_match))
+						print('  {}: Skipping right-aligned substring  "{}" of previous match.'.format( \
+							entry_word, substring))
 					pass
-					#print('{}: Skipping substring "{}" as a right-aligned substring of the previous match, "{}"'.format( \
-					#	entry_word, substring, preserved_prev_substring_match))
 
 			if prev_matching_substring != NO_MATCH:
+				# Add previous entry.
 				add_entry(prev_matching_substring, bigger_word, length_difference)
+				# Flush buffer.
+				prev_matching_substring = NO_MATCH
+
 		return matches
 	# The original method of Dedina and Nusbaum. Words begin left-aligned and end right-aligned.
 	# Given some word (input_word) we wish to pronounce alongside some entry_word and its phonemes,

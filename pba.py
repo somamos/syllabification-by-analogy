@@ -142,7 +142,7 @@ class PronouncerByAnalogy:
 			pm = self.pm
 			pm.remove(input_word, answer)
 
-		results, duration = PronouncerByAnalogy.pronounce(input_word, trimmed_lexical_database, trimmed_substring_database, verbose=False, pm=pm)
+		results = PronouncerByAnalogy.pronounce(input_word, trimmed_lexical_database, trimmed_substring_database, verbose=False, pm=pm)
 		if verbose:
 			PronouncerByAnalogy.simple_print(results, answer)
 
@@ -177,8 +177,7 @@ class PronouncerByAnalogy:
 				([word, self.lexical_database, self.substring_database, pm] \
 				for word in input_words))
 		# pronounce returns a dict of entries AND a float value.
-		for tup in results_list:
-			candidates_dict = tup[0]
+		for candidates_dict in results_list:
 			for key in candidates_dict:
 				if len(candidates_dict) == 1 or key == '10100':
 					# Convert from Candidate back to string.
@@ -194,11 +193,12 @@ class PronouncerByAnalogy:
 		return
 
 	def timed_pronounce(self, input_word, lexical_database, substring_database, verbose=False, attempt_bypass=False, pm=None):
-		results, duration = PronouncerByAnalogy.pronounce(input_word, lexical_database, substring_database, verbose=verbose, attempt_bypass=attempt_bypass, pm=pm)
-		return results, duration
+		results, duration, lattice = PronouncerByAnalogy.pronounce(input_word, lexical_database, substring_database, verbose=verbose, attempt_bypass=attempt_bypass, pm=pm, test_mode=True)
+		return results, duration, lattice
 
+	# Setting test_mode to True returns lattice for testing.
 	@staticmethod
-	def pronounce(input_word, lexical_database, substring_database, pm, verbose=False, attempt_bypass=False):
+	def pronounce(input_word, lexical_database, substring_database, pm, verbose=False, attempt_bypass=False, test_mode=False):
 		import time
 
 		if attempt_bypass and input_word in lexical_database:
@@ -231,7 +231,7 @@ class PronouncerByAnalogy:
 			for entry_word in lexical_database:
 				phonemes = lexical_database[entry_word] 
 				substrings = substring_database[entry_word]
-				matches = OldPatternMatcher.populate(input_word, entry_word, phonemes, None)
+				matches = OldPatternMatcher.populate(input_word, entry_word, phonemes, substrings)
 				for match in matches:
 					pl.add(*match)
 					match_count += 1
@@ -247,7 +247,9 @@ class PronouncerByAnalogy:
 		# Print with no regard for ground truth.
 		if verbose:
 			PronouncerByAnalogy.simple_print(results)
-		return results, duration
+		if test_mode:
+			return results, duration, pl
+		return results
 
 	# Given a dict of string labels (describing a strategy) mapped to candidates
 	# arrived at via that strategy, print.
@@ -270,11 +272,15 @@ class PronouncerByAnalogy:
 		pm = None
 		# Old method.
 		print('Old method:')
-		results1, dur1 = pba.timed_pronounce(input_word, self.lexical_database, self.substring_database, verbose=verbose, pm=pm)
+		results1, dur1, lattice1 = pba.timed_pronounce(input_word, self.lexical_database, self.substring_database, verbose=False, pm=pm)
 		pm = self.pm
 		# New, experimental method.
 		print('Experimental:')
-		results2, dur2 = pba.timed_pronounce(input_word, self.lexical_database, self.substring_database, verbose=verbose, pm=pm)
+		results2, dur2, lattice2 = pba.timed_pronounce(input_word, self.lexical_database, self.substring_database, verbose=False, pm=pm)
+
+		# Compare lattices.
+		Lattice.print_lattice_comparison(lattice1, lattice2)
+
 		print('Without experimental:\n', end='')
 		PronouncerByAnalogy.simple_print(results1)
 		print('With experimental:\n', end='')
@@ -286,9 +292,9 @@ if __name__ == "__main__":
 	MULTIPROCESS_LEGACY = False
 
 	# Huge lexical dataset.
-	#pba = PronouncerByAnalogy("output_c_2023-11-11-09-08-47")
+	pba = PronouncerByAnalogy("output_c_2023-11-11-09-08-47")
 	# Very small lexical dataset for testing.
-	pba = PronouncerByAnalogy("test_case")
+	#pba = PronouncerByAnalogy("test_case")
 	pba.compare_experimental('table', verbose=True)
 	#pba.pronounce('table', pba.lexical_database, pba.substring_database, pba.pm, verbose=True)
 
