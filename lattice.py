@@ -32,9 +32,10 @@ class Lattice:
 			return '{}'.format(self.phoneme)
 	# Arcs span nodes with phonemes between them (or nothing, if the two nodes are bigrams.)
 	class Arc:
-		def __init__(self, intermediate_phonemes, from_node, to_node):
+		def __init__(self, intermediate_phonemes, intermediate_letters, from_node, to_node):
 			self.from_node = from_node
 			self.intermediate_phonemes = intermediate_phonemes
+			self.intermediate_letters = intermediate_letters
 			self.to_node = to_node
 			self.count = 1
 			self.from_words = []
@@ -49,7 +50,11 @@ class Lattice:
 		def __ne__(self, other):
 			return not self.__eq__(other)
 		def __str__(self):
-			return '\n{}|{}|{}:{},\n(from words {})\n'.format(self.from_node.phoneme, self.intermediate_phonemes, self.to_node.phoneme, self.count, self.from_words)
+			#if any(self.from_words):
+			#	return '\n{}{}{}({}{}{}): {},  (from words {})'.format(self.from_node.phoneme, self.intermediate_phonemes, self.to_node.phoneme, \
+			#		self.from_node.matched_letter, self.intermediate_letters, self.to_node.matched_letter, self.count, self.from_words)			
+			return '\n{}{}{}({}{}{}): {}'.format(self.from_node.phoneme, self.intermediate_phonemes, self.to_node.phoneme, \
+				self.from_node.matched_letter, self.intermediate_letters, self.to_node.matched_letter, self.count)
 		def __hash__(self):
 			return hash((self.from_node, self.intermediate_phonemes, self.to_node))
 		# Accepts a list of nodes.
@@ -238,7 +243,8 @@ class Lattice:
 		if overflow:
 			print('Path threshold reached. Skipping.')
 			return SEARCHED_TOO_LONG
-		print('{} Paths found.'.format(len(candidates)))
+		if verbose:
+			print('{} Paths found.'.format(len(candidates)))
 		return candidates
 
 	# Count identical pronunciations generating
@@ -480,6 +486,39 @@ class Lattice:
 		results['arc_count_sum'] = func_by_attribute(min_lengths, 'arc_count_sum', max)[0]
 
 		return results
+	# Given two lattices a and b,
+	# a_only is the set of arcs distinct to a
+	# b_only is the set of arcs distinct to b
+	# shared is the set of arcs in both a and b
+	# given each shared arc s and its diff = (count of s in a) - (count of s in b)
+	#	a_shortage is the subset of shared arcs such that diff < 0
+	#	a_surplus is the subset of shared arcs such that diff > 0
+	#	a_b_unity is the subset of shared arcs such that diff = 0
+	@staticmethod
+	def print_lattice_comparison(a, b):
+		unique_to_a, unique_to_b, shared, a_shortage, a_surplus, a_b_unity = [], [], [], [], [], []
+		# Populate uniques and shared
+		for hash_ in a.arcs:
+			# Arcs not in b.
+			if hash_ not in b.arcs:
+				unique_to_a.append(a.arcs[hash_])
+			# Shared arcs.
+			else:
+				shared.append(a.arcs[hash_])
+		# Arcs not in a.
+		for hash_ in b.arcs:
+			if hash_ not in a.arcs:
+				unique_to_b.append(b.arcs[hash_])
+		# Sanity check.
+
+		if len(a.arcs) + len(b.arcs) - 2*len(shared) != len(unique_to_a) + len(unique_to_b):
+			print('Sanity check failed. {} + {} - 2*{} != {} + {}'.format(len(a.arcs), len(b.arcs), len(shared), len(unique_to_a), len(unique_to_b)))
+
+		print('{} arcs were shared, {} were unique to a, {} were unique to b.'.format(len(shared), len(unique_to_a), len(unique_to_b)))
+		# Split shared into a_shortage, a_surplus, and a_b_unity.
+		for arc_ in shared:
+			pass
+
 
 	def print_arcs(self):
 		print('ALL ARCS:')
@@ -489,13 +528,16 @@ class Lattice:
 	def print(self):
 		self.find_all_paths(True)
 
-	def create_or_iterate_arc(self, inter, a, b, word='', forced_count=0):
-		new = self.Arc(inter, a, b)
+	def create_or_iterate_arc(self, inter, inter_letters, a, b, word='', forced_count=0):
+		#print('Given word "{}":'.format(word))
+		new = self.Arc(inter, inter_letters, a, b)
+		#print('  Looking for arc {} in:\n'.format(new))
 		found = self.arcs.get(hash((inter, a, b)), None)
-		if found is not None: # Do not iterate start nodes. The only count the number of words that start and end with
+		if found is not None: 
 			if forced_count != 0:
 				print('Error. Forcing the count of a duplicate arc: {}'.format(str(found)))
 				exit()
+			# Do not iterate start or end nodes.
 			found.count += 1 if not found.contains([self.START_NODE, self.END_NODE]) else 0 # this word's first and end letter.
 			found.from_words.append(word)
 			return found
@@ -524,21 +566,21 @@ class Lattice:
 	def add_forced(self, sub_letters, sub_phones, start_index, forced_count):
 		a = self.create_or_find_node(sub_letters[0], sub_phones[0], start_index)
 		b = self.create_or_find_node(sub_letters[-1], sub_phones[-1], start_index + len(sub_letters) - 1)
-		arc = self.create_or_iterate_arc(sub_phones[1:-1], a, b, forced_count=forced_count)
+		arc = self.create_or_iterate_arc(sub_phones[1:-1], sub_letters[1:-1], a, b, forced_count=forced_count)
 		if start_index == 0:
-			start_arc = self.create_or_iterate_arc('', self.START_NODE, a)
+			start_arc = self.create_or_iterate_arc('', '', self.START_NODE, a)
 		if start_index + len(sub_letters) == len(self.letters):
-			end_arc = self.create_or_iterate_arc('', b, self.END_NODE)
+			end_arc = self.create_or_iterate_arc('', '', b, self.END_NODE)
 
 	def add(self, sub_letters, sub_phones, start_index, word=''):
 		a = self.create_or_find_node(sub_letters[0], sub_phones[0], start_index) # Local start.
 		b = self.create_or_find_node(sub_letters[-1], sub_phones[-1], start_index + len(sub_letters) - 1) # Local end.
-		arc = self.create_or_iterate_arc(sub_phones[1:-1], a, b, word=word) # Arc between.
+		arc = self.create_or_iterate_arc(sub_phones[1:-1], sub_letters[1:-1], a, b, word=word) # Arc between.
 		# Handle global beginning and end.
 		if start_index == 0:
-			start_arc = self.create_or_iterate_arc('', self.START_NODE, a)
+			start_arc = self.create_or_iterate_arc('', '', self.START_NODE, a)
 		if start_index + len(sub_letters) == len(self.letters):
-			end_arc = self.create_or_iterate_arc('', b, self.END_NODE)
+			end_arc = self.create_or_iterate_arc('', '', b, self.END_NODE)
 
 	# Fix the silence problem.
 	# Every node at index furthest should link to every node at furthest + 1.
