@@ -71,7 +71,7 @@ class OldPatternMatcher:
 	# Returns matches, a list of tuples representing matching substrings to add to the lattice.
 	
 	@staticmethod
-	def populate_precalculated_legacy(input_word, entry_word, phonemes, entry_substrings, verbose=False):
+	def populate_precalculated_legacy(input_word, entry_word, phonemes, entry_substrings, verbose=True):
 		matches = []
 		def add_entry(substr, i, bigger_w, length_diff):
 			import re
@@ -125,29 +125,45 @@ class OldPatternMatcher:
 					add_entry(substring, i, bigger_word, length_difference)
 		# Remove matches that are substrings of larger matches.
 		matches_to_exclude = set()
+		if verbose:
+			print('Removing duplicates for "{}":'.format(entry_word))
 		for i, match in enumerate(matches):
 			letters, phonemes, index, _ = match
 			# Short ones cannot possibly have substrings.
 			if len(letters) < 3:
 				continue
 
+			potential_parent = '{}({})'.format(letters, phonemes)
 			matches_without_i = matches[:i] + matches[i + 1:]
 			for other_match in matches_without_i:
 				other_letters, other_phonemes, other_index, _ = other_match
+				potential_child = '{}({})'.format(other_letters, other_phonemes)
 				# Length greater than or equal to match's cannot possibly be match's substring.
 				if len(other_letters) >= len(letters):
+					if verbose:
+						print('Skipping because {}\'s length {} is greater than {}\'s length {}'.format( \
+							potential_child, len(other_letters), potential_parent, len(letters)))
 					continue
 				# Letters outside match's range indicate other_ cannot possibly be match's substring.
 				if other_index < index or index + len(letters) < other_index + len(other_letters):
+					if verbose:
+						print('Skipping because {} lies outside of {}\'s bounds.'.format( \
+							potential_child, potential_parent))
 					continue
 				# BOTH ends equal cannot possibly be a substring, because they're the same length.
 				# The difference between this condition and the last is the "AND."
 				if other_index == index and index + len(letters) == other_index + len(other_letters):
+					if verbose:
+						print('Skipping because {} encompasses {}.'.format( \
+							potential_child, potential_parent))
 					continue
 				# Lastly, we have to check if the phonemes map on to each other.
 				start = other_index - index # We know other_index >= index.
 				end = other_index - index + len(other_letters) # Algebra on the second condition above tells us this HAS to be less than len(letters).
-				if phonemes[start:end + 1] != other_phonemes:
+				if phonemes[start:end] != other_phonemes:
+					if verbose:
+						print('Skipping because {}\'s phonemes do not match {}\'s (sliced: {}).'.format( \
+							potential_child, potential_parent, phonemes[start:end]))
 					continue
 				if verbose:
 					print('{} is a substring of {}'.format(other_match, match))
