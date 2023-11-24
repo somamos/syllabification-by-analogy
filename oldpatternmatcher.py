@@ -71,7 +71,7 @@ class OldPatternMatcher:
 	# Returns matches, a list of tuples representing matching substrings to add to the lattice.
 	
 	@staticmethod
-	def populate_precalculated_legacy(input_word, entry_word, phonemes, entry_substrings, verbose=True):
+	def populate_precalculated_legacy(input_word, entry_word, phonemes, entry_substrings, verbose=False):
 		matches = []
 		def add_entry(substr, i, bigger_w, length_diff):
 			import re

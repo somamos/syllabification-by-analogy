@@ -108,42 +108,58 @@ class PatternMatcher:
 									  # including substrings of input_word.
 		# Each greatest common ancestor will be propagated downward to its children,
 		# so that it can be decremented by every ancestor's raw count.
-		child_hash_to_ancestor_set = {}
+		child_hash_to_ancestor_set_and_counts = {}
 		# A unique way to refer to a given mapping.
 		def make_hash(key, representation):
 			return '{}({})'.format(key, representation)
-		# Given some parent, propagate ITS parents and their raw counts downward OR propagate its own raw counts downward.
-		def update_child_entries(key, representation):
+		# Given some parent, propagate ITS parents and their raw counts downward, if applicable, as well as the remaining
+		# counts not accounted for by those parents (see the comment below);
+		# OR propagate only its own raw counts downward.
+		# Current letter-representation pair here serves as a parent. Hence, "parent_decremented_counts" are key-of-representation's.
+		def update_child_entries(key, representation, parent_decremented_counts):
 			nonlocal verbose
-			nonlocal child_hash_to_ancestor_set
+			nonlocal child_hash_to_ancestor_set_and_counts
 			parent_hash = make_hash(key, representation)
 			left_child_hash = make_hash(key[:-1], representation[:-1])
 			right_child_hash = make_hash(key[1:], representation[1:])
 			if verbose:
 				print('Informing {}\'s children {} and {} of its ancestors.'.format(parent_hash, left_child_hash, right_child_hash))
 
-			left_child_set = child_hash_to_ancestor_set.get(left_child_hash, set())
-			right_child_set = child_hash_to_ancestor_set.get(right_child_hash, set())
+			left_child_set = child_hash_to_ancestor_set_and_counts.get(left_child_hash, set())
+			right_child_set = child_hash_to_ancestor_set_and_counts.get(right_child_hash, set())
 			if verbose:
 				print('    left child set: {}\n    right child set: {}'.format(left_child_set, right_child_set))
-			if parent_hash not in child_hash_to_ancestor_set:
+			if parent_hash not in child_hash_to_ancestor_set_and_counts:
 				if verbose:
 					print('  {} itself is a greatest common ancestor'.format(parent_hash))
 				# No previous parent pointed me to their counts.
 				# I therefore must propagate myself downward as the greatest common ancestor to my children.
-				left_child_set.add((key, representation))
-				right_child_set.add((key, representation))
+				left_child_set.add((key, representation, raw_counts[key][representation]))
+				right_child_set.add((key, representation, raw_counts[key][representation]))
 			else:
 				if verbose:
-					print('  {} itself had ancestors: {}'.format(parent_hash, child_hash_to_ancestor_set[parent_hash]))
-				# This parent had least one greater ancestor to pass down. Pass it down instead of itself.
-				left_child_set = left_child_set.union(child_hash_to_ancestor_set[parent_hash])
-				right_child_set = right_child_set.union(child_hash_to_ancestor_set[parent_hash])
+					print('  {} itself had ancestors: {}'.format(parent_hash, child_hash_to_ancestor_set_and_counts[parent_hash]))
+					print('  {} also adding its own counts not accounted for by those ancestors: {}'.format(parent_hash, parent_decremented_counts))
+				# This parent had least one greater ancestor to pass down. Pass it down.
+				left_child_set = left_child_set.union(child_hash_to_ancestor_set_and_counts[parent_hash])
+				right_child_set = right_child_set.union(child_hash_to_ancestor_set_and_counts[parent_hash])
+				# We arrive at the reason why we pass ancestor_count into the tuple instead of getting it from raw counts:
+				# This match's direct child substrings might have counts due to this match and NOT any of its ancestors:
+				# for instance, given the input word "table", current parent "ble", right child "le", greatest common ancestor "able",
+				# "le" needs to be decremented by BOTH 1) counts of its grandparent "able" AND 2) the instances of "ble" without parents (in this case "coble.")
+				# We did (1) above. Now we do (2).
+				# (Concrete example: matching "table" in the dataset of 3 words "bund[le]", "co[ble]" and "knowledge[able]", 
+				#  the raw counts of matches are le: 3, ble: 2, able: 1.
+				#  The corrected counts should be le: 1 (from bundle), ble: 1 (from coble), and able: 1 (from knowledgeable).)
+				left_child_set.add((key, representation, parent_decremented_counts))
+				right_child_set.add((key, representation, parent_decremented_counts))
+
 			# Update child entries.
-			child_hash_to_ancestor_set[left_child_hash] = left_child_set
-			child_hash_to_ancestor_set[right_child_hash] = right_child_set
+			child_hash_to_ancestor_set_and_counts[left_child_hash] = left_child_set
+			child_hash_to_ancestor_set_and_counts[right_child_hash] = right_child_set
 			if verbose:
-				print('    updated left child set: {}\n    updated right child set: {}'.format(child_hash_to_ancestor_set[left_child_hash], child_hash_to_ancestor_set[right_child_hash]))
+				print('    updated left child set: {}\n    updated right child set: {}'.format( \
+					child_hash_to_ancestor_set_and_counts[left_child_hash], child_hash_to_ancestor_set_and_counts[right_child_hash]))
 			
 		for row in input_letter_substrings_largest_first:
 			for row_index, key in enumerate(row):
@@ -169,27 +185,28 @@ class PatternMatcher:
 						print('{} has {} occurrences in the lexical database.'.format(key_rep_hash, \
 						alt_domain_substring_counts[representation]))
 
-					# Short ones have no children.
-					if len(key) >= 3:
-						# Propagates greatest ancestors downward if present, to be decremented in future iterations below.
-						# (This explains why we go in order of largest substrings first)
-						update_child_entries(key, representation)
 
 					# Set our raw count.
 					subset_of_optimized_dict[key][representation] = raw_counts[key][representation]
 					# Decrement if applicable.
-					if key_rep_hash in child_hash_to_ancestor_set:
+					if key_rep_hash in child_hash_to_ancestor_set_and_counts:
 						# Decrement by each greatest common ancestor.
 						if verbose:
-							print('  {}\'s entry in the database: {}'.format(key_rep_hash, child_hash_to_ancestor_set[key_rep_hash]))
-						for ancestor_key, ancestor_representation in child_hash_to_ancestor_set[key_rep_hash]:
+							print('  {}\'s logged successors: {}'.format(key_rep_hash, child_hash_to_ancestor_set_and_counts[key_rep_hash]))
+						for ancestor_key, ancestor_representation, effective_ancestor_count in child_hash_to_ancestor_set_and_counts[key_rep_hash]:
 							ancestor_hash = make_hash(ancestor_key, ancestor_representation)
-							ancestor_raw_count = raw_counts[ancestor_key][ancestor_representation]
-							subset_of_optimized_dict[key][representation] -= ancestor_raw_count
+							subset_of_optimized_dict[key][representation] -= effective_ancestor_count
 							if verbose:
-								print('  Removed {} occurrences common to ancestor {}.'.format(ancestor_raw_count, ancestor_hash))
+								print('  Removed {} occurrences common to ancestor {}.'.format(effective_ancestor_count, ancestor_hash))
 								print('  {} now has {} occurrences.'.format(key_rep_hash, subset_of_optimized_dict[key][representation]))
-
+					# Short ones have no children.
+					if len(key) >= 3:
+						# Propagates greatest ancestors downward if present, to be decremented in future iterations below.
+						# Also pass in the DECREMENTED direct parent, since those represent the manners in which that parent
+						# serves as a unique greatest common ancestor itself.
+						# (This explains why we go in order of largest substrings first)
+						update_child_entries(key, representation, subset_of_optimized_dict[key][representation])
+					subset_of_optimized_dict[key][representation]
 
 		# Populate matches with the final counts.
 		for row in input_letter_substrings_largest_first:
