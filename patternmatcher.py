@@ -110,18 +110,20 @@ class PatternMatcher:
 		# so that it can be decremented by every ancestor's raw count.
 		child_hash_to_ancestor_set_and_counts = {}
 		# A unique way to refer to a given mapping.
-		def make_hash(key, representation):
-			return '{}({})'.format(key, representation)
+		def make_hash(key, representation, index=-1):
+			if index == -1:
+				return '{}({})'.format(key, representation)
+			return '{}({}), {}'.format(key, representation, index)
 		# Given some parent, propagate ITS parents and their raw counts downward, if applicable, as well as the remaining
 		# counts not accounted for by those parents (see the comment below);
 		# OR propagate only its own raw counts downward.
 		# Current letter-representation pair here serves as a parent. Hence, "parent_decremented_counts" are key-of-representation's.
-		def update_child_entries(key, representation, parent_decremented_counts):
+		def update_child_entries(key, representation, parent_decremented_counts, index):
 			nonlocal verbose
 			nonlocal child_hash_to_ancestor_set_and_counts
-			parent_hash = make_hash(key, representation)
-			left_child_hash = make_hash(key[:-1], representation[:-1])
-			right_child_hash = make_hash(key[1:], representation[1:])
+			parent_hash = make_hash(key, representation, index)
+			left_child_hash = make_hash(key[:-1], representation[:-1], index)
+			right_child_hash = make_hash(key[1:], representation[1:], index + 1)
 			if verbose:
 				print('Informing {}\'s children {} and {} of its ancestors.'.format(parent_hash, left_child_hash, right_child_hash))
 
@@ -134,8 +136,8 @@ class PatternMatcher:
 					print('  {} itself is a greatest common ancestor'.format(parent_hash))
 				# No previous parent pointed me to their counts.
 				# I therefore must propagate myself downward as the greatest common ancestor to my children.
-				left_child_set.add((key, representation, raw_counts[key][representation]))
-				right_child_set.add((key, representation, raw_counts[key][representation]))
+				left_child_set.add((key, representation, raw_counts[key][representation], index))
+				right_child_set.add((key, representation, raw_counts[key][representation], index))
 			else:
 				if verbose:
 					print('  {} itself had ancestors: {}'.format(parent_hash, child_hash_to_ancestor_set_and_counts[parent_hash]))
@@ -151,8 +153,8 @@ class PatternMatcher:
 				# (Concrete example: matching "table" in the dataset of 3 words "bund[le]", "co[ble]" and "knowledge[able]", 
 				#  the raw counts of matches are le: 3, ble: 2, able: 1.
 				#  The corrected counts should be le: 1 (from bundle), ble: 1 (from coble), and able: 1 (from knowledgeable).)
-				left_child_set.add((key, representation, parent_decremented_counts))
-				right_child_set.add((key, representation, parent_decremented_counts))
+				left_child_set.add((key, representation, parent_decremented_counts, index))
+				right_child_set.add((key, representation, parent_decremented_counts, index))
 
 			# Update child entries.
 			child_hash_to_ancestor_set_and_counts[left_child_hash] = left_child_set
@@ -160,57 +162,64 @@ class PatternMatcher:
 			if verbose:
 				print('    updated left child set: {}\n    updated right child set: {}'.format( \
 					child_hash_to_ancestor_set_and_counts[left_child_hash], child_hash_to_ancestor_set_and_counts[right_child_hash]))
-			
+		# Get the counts of each matching substring of input_word in the lexical dataset.
+		# When a matched representation exists within some other matched representation, we decrement the child's counts by the parent's: 
+		# i.e. given input word "catalog", some subset of entry "cat (k@t)"'s matches belong to entry "cata (k@tx)".
 		for row in input_letter_substrings_largest_first:
+			# row_index here is index within input_word:
+			# [ 
+			#   [“sauce”] 
+			#   [“sauc”, “auce”], 
+			#   [“sau”, “auc”, “uce”], 
+			#   [“sa”, “au”, “uc”, “ce”], 
+			# ]
 			for row_index, key in enumerate(row):
-				# Skip instances not present.
+				# Skip substrings of input_word not present in the lexical database.
 				if self.substring_to_alt_domain_count_dict.get(key, None) == None:
 					continue
-				# Skip instances ALREADY present.
 				
 				alt_domain_substring_counts = self.substring_to_alt_domain_count_dict[key].copy()  # i.e. {'sc--s': 6, 's-Wse': 2, 'sc-sx': 1}
 				# Map this input substring to an inner dict of every possible representation mapped to its count
-				subset_of_optimized_dict[key] = alt_domain_substring_counts
+				# By the way, we must also index by row_index because substrings can have separate counts: the two "ar"s in "tartar" will have
+				# separate counts because the first one is rightfully decremented by "art", for instance.
+				subset_of_optimized_dict[(key, row_index)] = alt_domain_substring_counts
 
-				# Now we must decrement each of our representations by their greatest common ancestors if present.
-				# (If there aren't any present, then we are a greatest common ancestor).
-				# Finally, notify our children of our own ancestors OR (if we have none) ourselves.
+				# Now this substring must decrement each of its representations by their greatest common ancestors' counts
+				# and flag its direct children for decrementation as well.
 				alt_domain_representations = alt_domain_substring_counts.keys()
 				for representation in alt_domain_representations:
 					if verbose:
 						print('CURRENT ROW INDEX: {},\nROW:{}\nREPRESENTATION:{}'.format(row_index, row, representation))
 
-					key_rep_hash = make_hash(key, representation)
+					key_rep_hash = make_hash(key, representation, row_index)
 					if verbose:
 						print('{} has {} occurrences in the lexical database.'.format(key_rep_hash, \
 						alt_domain_substring_counts[representation]))
 
-
 					# Set our raw count.
-					subset_of_optimized_dict[key][representation] = raw_counts[key][representation]
+					subset_of_optimized_dict[(key, row_index)][representation] = raw_counts[key][representation]
 					# Decrement if applicable.
 					if key_rep_hash in child_hash_to_ancestor_set_and_counts:
 						# Decrement by each greatest common ancestor.
 						if verbose:
 							print('  {}\'s logged successors: {}'.format(key_rep_hash, child_hash_to_ancestor_set_and_counts[key_rep_hash]))
-						for ancestor_key, ancestor_representation, effective_ancestor_count in child_hash_to_ancestor_set_and_counts[key_rep_hash]:
-							ancestor_hash = make_hash(ancestor_key, ancestor_representation)
-							subset_of_optimized_dict[key][representation] -= effective_ancestor_count
+						for ancestor_key, ancestor_representation, effective_ancestor_count, ancestor_index in child_hash_to_ancestor_set_and_counts[key_rep_hash]:
+							ancestor_hash = make_hash(ancestor_key, ancestor_representation, ancestor_index)
+							subset_of_optimized_dict[(key, row_index)][representation] -= effective_ancestor_count
 							if verbose:
 								print('  Removed {} occurrences common to ancestor {}.'.format(effective_ancestor_count, ancestor_hash))
-								print('  {} now has {} occurrences.'.format(key_rep_hash, subset_of_optimized_dict[key][representation]))
+								print('  {} now has {} occurrences.'.format(key_rep_hash, subset_of_optimized_dict[(key, row_index)][representation]))
 					# Short ones have no children.
 					if len(key) >= 3:
 						# Propagates greatest ancestors downward if present, to be decremented in future iterations below.
 						# Also pass in the DECREMENTED direct parent, since those represent the manners in which that parent
 						# serves as a unique greatest common ancestor itself.
 						# (This explains why we go in order of largest substrings first)
-						update_child_entries(key, representation, subset_of_optimized_dict[key][representation])
-					subset_of_optimized_dict[key][representation]
+						update_child_entries(key, representation, subset_of_optimized_dict[(key, row_index)][representation], row_index)
 
 		# Populate matches with the final counts.
 		for row in input_letter_substrings_largest_first:
-			# row_index here is index within the word:
+			# again, row_index here is index within the word:
 			# [ 
 			#   [“sauce”] 
 			#   [“sauc”, “auce”], 
@@ -219,18 +228,17 @@ class PatternMatcher:
 			# ]
 			for row_index, key in enumerate(row):
 				# Skip instances not present.
-				if subset_of_optimized_dict.get(key, None) == None:
+				if subset_of_optimized_dict.get((key, row_index), None) == None:
 					continue
 
 				# Every match for this key.
-				alt_domain_substring_counts = subset_of_optimized_dict[key].copy()  # i.e. {'sc--s': 6, 's-Wse': 2, 'sc-sx': 1}
+				alt_domain_substring_counts = subset_of_optimized_dict[(key, row_index)].copy()  # i.e. {'sc--s': 6, 's-Wse': 2, 'sc-sx': 1}
 				for alt_domain_representation in alt_domain_substring_counts:
 					# A tuple of the form (substr, alternate_domain_representation, index, count)
 					match = (key, alt_domain_representation, row_index, alt_domain_substring_counts[alt_domain_representation])
 					if verbose:
 						print(match)
 					# By this point, substrings of substrings have been decremented to zero.
-					# We print before pruning them just to be able to verify that the logic is sound.
 					if alt_domain_substring_counts[alt_domain_representation] == 0:
 						continue
 					if alt_domain_substring_counts[alt_domain_representation] < 0:
