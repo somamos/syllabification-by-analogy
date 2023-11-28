@@ -78,16 +78,17 @@ class OldPatternMatcher:
 			indices_in_bigger = [m.start() for m in re.finditer('(?={})'.format(substr), bigger_w)]
 			# Add to the lattice.
 			for bigger_index in indices_in_bigger:
+				# In both cases, we include the entry_word's index of occurrence to disambiguate multiple occurrences of the same substring within an entry word.
 				# Entry word is the bigger word.
 				if length_diff <= 0:
 					# The smaller word's starting index, then, is i, because of how input_precalculated_substrings are organized.
 					# Locate the indices in the entry word out of which to slice the phonemes.
-					matches.append((substr, phonemes[bigger_index : bigger_index + len(substr)], i, entry_word))
+					matches.append((substr, phonemes[bigger_index : bigger_index + len(substr)], i, entry_word, bigger_index))
 					if verbose:
 						print('      Adding match {}'.format(matches[-1]))
 				# Input word is the bigger word.
 				else:
-					matches.append((substr, phonemes[i : i + len(substr)], bigger_index, entry_word))
+					matches.append((substr, phonemes[i : i + len(substr)], bigger_index, entry_word, i))
 					if verbose:
 						print('      Adding match {}'.format(matches[-1]))
 
@@ -112,23 +113,20 @@ class OldPatternMatcher:
 			print('Smaller words\' substrings: {}'.format(smaller_words_substrings))
 		NO_MATCH = ('', -1)
 		has_matched = False
-		# Add all entries indiscriminately, removing left-aligned and right-aligned substrings of bigger matches.
+		# Add all entries indiscriminately.
 		for i, row in enumerate(smaller_words_substrings):
 			for j, substring in enumerate(row):
 				if substring not in bigger_word:
 					# Because of the order from smallest to largest, no other substring in this row will match.
 					break
-				# Substring is in bigger word. As per PART 2 above,
-				# we must ascertain this current column "does not lie in a previous mask's shadow."
 				else:
-					# Add entry, deleting previous submatches.
 					add_entry(substring, i, bigger_word, length_difference)
 		# Remove matches that are substrings of larger matches.
 		matches_to_exclude = set()
 		if verbose:
 			print('Removing duplicates for "{}":'.format(entry_word))
 		for i, match in enumerate(matches):
-			letters, phonemes, index, _ = match
+			letters, phonemes, index, _, entry_index = match
 			# Short ones cannot possibly have substrings.
 			if len(letters) < 3:
 				continue
@@ -136,28 +134,36 @@ class OldPatternMatcher:
 			potential_parent = '{}({})'.format(letters, phonemes)
 			matches_without_i = matches[:i] + matches[i + 1:]
 			for other_match in matches_without_i:
-				other_letters, other_phonemes, other_index, _ = other_match
+				other_letters, other_phonemes, other_index, _, other_entry_index = other_match
 				potential_child = '{}({})'.format(other_letters, other_phonemes)
-				# Length greater than or equal to match's cannot possibly be match's substring.
+				# 1. Length greater than or equal to match's cannot possibly be match's substring.
 				if len(other_letters) >= len(letters):
 					if verbose:
 						print('Skipping because {}\'s length {} is greater than {}\'s length {}'.format( \
 							potential_child, len(other_letters), potential_parent, len(letters)))
 					continue
-				# Letters outside match's range indicate other_ cannot possibly be match's substring.
+				# 2. Letters outside match's input range indicate other_ cannot possibly be match's substring.
 				if other_index < index or index + len(letters) < other_index + len(other_letters):
 					if verbose:
+						print('{} < {} or {} + {} < {} + {}'.format(other_index, index, index, len(letters), other_index, len(other_letters)))
 						print('Skipping because {} lies outside of {}\'s bounds.'.format( \
 							potential_child, potential_parent))
 					continue
-				# BOTH ends equal cannot possibly be a substring, because they're the same length.
+				# 3. We need to disambiguate between identical entry word substrings as well: Only one of the two "ng"s in entry "jingsheng" are children of "ing".
+				if other_entry_index < entry_index or entry_index + len(letters) < other_entry_index + len(other_letters):
+					if verbose:
+						print('{} < {} or {} + {} < {} + {}'.format(other_index, index, index, len(letters), other_index, len(other_letters)))
+						print('Skipping because {} lies outside of {}\'s ENTRY INDEX bounds.'.format( \
+							potential_child, potential_parent))
+					continue
+				# 4. BOTH ends equal cannot possibly be a substring, because they're the same length.
 				# The difference between this condition and the last is the "AND."
 				if other_index == index and index + len(letters) == other_index + len(other_letters):
 					if verbose:
 						print('Skipping because {} encompasses {}.'.format( \
 							potential_child, potential_parent))
 					continue
-				# Lastly, we have to check if the phonemes map on to each other.
+				# 5. Check if the phonemes map on to each other.
 				start = other_index - index # We know other_index >= index.
 				end = other_index - index + len(other_letters) # Algebra on the second condition above tells us this HAS to be less than len(letters).
 				if phonemes[start:end] != other_phonemes:
@@ -165,10 +171,12 @@ class OldPatternMatcher:
 						print('Skipping because {}\'s phonemes do not match {}\'s (sliced: {}).'.format( \
 							potential_child, potential_parent, phonemes[start:end]))
 					continue
+
 				if verbose:
 					print('{} is a substring of {}'.format(other_match, match))
 				matches_to_exclude.add(other_match)
-		return list([match for match in matches if match not in matches_to_exclude])
+		# We exclude the last element, entry_index, because it was only used to avoid overpruning duplicates in condition 3 above.
+		return list([match[:-1] for match in matches if match not in matches_to_exclude])
 
 	# The original method of Dedina and Nusbaum. Words begin left-aligned and end right-aligned.
 	# Given some word (input_word) we wish to pronounce alongside some entry_word and its phonemes,
