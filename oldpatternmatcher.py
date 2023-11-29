@@ -131,11 +131,16 @@ class OldPatternMatcher:
 			if len(letters) < 3:
 				continue
 
-			potential_parent = '{}({})'.format(letters, phonemes)
+			potential_parent = '{}({}) ii:{} ei:{}'.format(letters, phonemes, index, entry_index)
 			matches_without_i = matches[:i] + matches[i + 1:]
 			for other_match in matches_without_i:
 				other_letters, other_phonemes, other_index, _, other_entry_index = other_match
-				potential_child = '{}({})'.format(other_letters, other_phonemes)
+				potential_child = '{}({}) ii:{} ei:{}'.format(other_letters, other_phonemes, other_index, other_entry_index)
+				# 0. Already excluded.
+				if other_match in matches_to_exclude:
+					if verbose:
+						print('Skipping because {} already has been proven to be a substring.'.format(potential_child))
+					continue
 				# 1. Length greater than or equal to match's cannot possibly be match's substring.
 				if len(other_letters) >= len(letters):
 					if verbose:
