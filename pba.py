@@ -278,7 +278,6 @@ class PronouncerByAnalogy:
 			evaluation = 'CORRECT' if results[result].pronunciation == ground_truth else 'incorrect'
 			print('{}: {}, {}'.format(result, results[result], evaluation))
 		print('Ground truth: {}'.format(ground_truth))
-
 	def compare_experimental(self, input_word, verbose=False, pm=None):
 		pm = None
 		# Old method.
@@ -304,23 +303,24 @@ if __name__ == "__main__":
 
 	# Huge lexical dataset.
 	pba = PronouncerByAnalogy("output_c_2023-11-11-09-08-47")
-	# Very small lexical dataset for testing.
-	#pba = PronouncerByAnalogy("test_case")
-	pba.compare_experimental('inininin', verbose=True)
-	#pba.pronounce('table', pba.lexical_database, pba.substring_database, pba.pm, verbose=True)
+	# A way to prune the dataset while keeping distribution relatively even across the alphabet.
+	#pba = PronouncerByAnalogy("output_c_2023-11-11-09-08-47", skip_every=2000, offset=1)
 
-	# Uncomment below to run a test that guarantees optimized dict structure will remain the same throughout cross validation
+	# Run a test that guarantees optimized dict structure will remain the same throughout cross validation
 	#print('\nAscertain removing and adding back each word does not change the optimized dict:')
 	#pba.pm.simulate_leaveoneout(pba.lexical_database, check_every=10000)
 
-	#print('\nCompare old method to new method\n(Bypasses USE_EXPERIMENTAL_PATTERNMATCHER flag):\n')
-	#pba.compare_experimental('cap')
+	#print('\nCompare old pattern matching method to new, optimized method\n(Bypasses USE_EXPERIMENTAL_PATTERNMATCHER flag):\n')
+	#pba.compare_experimental('placable', verbose=True)
+
+	print('\nPronounce a word with the new method.\n')
+	pba.pronounce('table', pba.lexical_database, pba.substring_database, pba.pm, verbose=True)
 
 	#print('\nPronounce a sentence with the new method:\n')
 	#pba.pronounce_sentence('The QUICK brown FOX jumps OVER the LAZY dog.', multiprocess_words=False)
 
 	#print('\nTesting a word that is clearly not in the dataset\n(Bypasses USE_EXPERIMENTAL_PATTERNMATCHER flag):')
-	#print('Notice how pathfinding via breadth-first-search is the current performance bottleneck.\n')
+	#print('Notice how pathfinding via breadth-first-search is the current performance bottleneck.')
 	#pba.pronounce('solsolsolsolsol', pba.lexical_database, pba.substring_database, pba.pm, verbose=True)
 
 	#print('\nRemove the test word from the dataset before attempt:\n')
