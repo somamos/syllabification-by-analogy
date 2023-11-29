@@ -1,27 +1,14 @@
 class PatternMatcher:
 	# Loads optimized dict for that lexicon if one exists, else optimizes that lexicon.
-	def __init__(self, word_to_alt_domain_dict, word_to_alt_domain_filename, use_padding, skip_every=-1, offset = 0):
-		formatted_name = 'optimized_{}_padding-{}'.format(word_to_alt_domain_filename, use_padding)
-		# Append the skip factor if applicable.
-		formatted_name = formatted_name + '_skipping-every-' + str(skip_every) if skip_every != -1 else formatted_name
-		# Append offset if applicable.
-		formatted_name = formatted_name + '_offset-' + str(offset) if offset != 0 else formatted_name
-		import pickle
+	def __init__(self, word_to_alt_domain_dict, output_folder, formatted_name, use_padding, skip_every=-1, offset = 0):
+		import loader as l
 		# Check for previous optimization dict and load it if applicable.
-		try:
-			print('Attempting to load {}...'.format(formatted_name))
-			f = open('Data/{}'.format(formatted_name), 'rb')
-			self.substring_to_alt_domain_count_dict = pickle.load(f)
-			f.close()
-			print('Found and loaded previously saved optimization dict.')
+		self.substring_to_alt_domain_count_dict = l.load(output_folder, formatted_name)
 
-		except FileNotFoundError:
-			print('Optimization dict not found. Optimizing {}.'.format(word_to_alt_domain_filename))
+		if self.substring_to_alt_domain_count_dict is None:
 			self.substring_to_alt_domain_count_dict = \
 				PatternMatcher.generate_optimization_dict(word_to_alt_domain_dict)
-			f = open('Data/{}'.format(formatted_name), 'wb')
-			pickle.dump(self.substring_to_alt_domain_count_dict, f)
-			f.close()
+			l.write(output_folder, formatted_name, self.substring_to_alt_domain_count_dict)
 
 	# 'slime' -> [['slime'], ['slim', 'lime'], ['sli', 'lim', 'ime'], ['sl', 'li', 'im', 'me']]
 	@staticmethod

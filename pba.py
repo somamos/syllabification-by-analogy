@@ -9,29 +9,26 @@ from oldpatternmatcher import OldPatternMatcher
 USE_EXPERIMENTAL_PATTERNMATCHER = True
 # Takes longer, but potentially yields better results by linking certain phonemes to word borders.
 # Attempting to pronounce "the" without padding yields "D-R", but with padding yields (correctly) "D-x".
-USE_PADDING = True
 MULTIPROCESS_LEGACY = False
 
 class PronouncerByAnalogy:
-	# Repeatedly calling this needs to be safe, because
-	# cross_validate_pronounce calls pronounce, but the user
-	# might call either of those with a padded or non-padded input.
 	@staticmethod
-	def pad_if(s):
-		# Therefore we remove padding if present at the start.
+	def pad_if(s, padding):
+		# Assume we're not padding.
 		s = s[1:-1] if s.startswith('#') and s.endswith('#') else s
 		# Add it back if needed.
-		if USE_PADDING:
+		if padding:
 			s = '#{}#'.format(s)
 		return s
 
-	def cross_validate(self, start=0):
+	def cross_validate(self, start=0, pad=True):
 		from datetime import datetime
 		from collections.abc import Iterable
 		now = datetime.today().strftime('%Y-%m-%d-%H-%M-%S')
 		total = 0
 		trial = start
-		wordlist = list(self.lexical_database.keys())
+		ldb = self.lexical_database_pad if pad else self.lexical_database
+		wordlist = list(ldb.keys())
 
 		trial_count = len(wordlist) - 1
 		trial_word = ''
@@ -62,7 +59,7 @@ class PronouncerByAnalogy:
 				
 				trial_word = wordlist[trial]
 				output += 'TRIAL {}, {}\n'.format(trial, trial_word)
-				ground_truth = self.lexical_database.get(trial_word, '')
+				ground_truth = ldb.get(trial_word, '')
 				if ground_truth == '':
 					# The wordlist has a word that is not in this dict.
 					trial += 1
@@ -70,7 +67,7 @@ class PronouncerByAnalogy:
 					continue
 				print('Loading trial #{}: {} ({})...'.format(trial, trial_word, ground_truth))
 
-				results = self.cross_validate_pronounce(trial_word)
+				results = self.cross_validate_pronounce(trial_word, pad=pad)
 				if not isinstance(results, Iterable):
 					# Print the error.
 					error_code = results
@@ -110,57 +107,94 @@ class PronouncerByAnalogy:
 				print()
 
 	# skip_every is -1 (disabled) or >= 2. Generates smaller datasets for easier testing.
-	def __init__(self, dataset_filename, skip_every=-1, offset=0, verbose=False):
+	def __init__(self, output_folder, dataset_filename, skip_every=-1, offset=0, verbose=False):
+		import loader as l
+
+		self.dataset_filename = dataset_filename
+		self.skip_every = skip_every
+		self.offset = offset
+
 		self.pl = None
 		print('Loading lexical database...')
 		# Assign Lexical Database.
-		self.lexical_database = {}
-		self.substring_database = {}
 		lines = 0
-		with open('Preprocessing/Out/{}.txt'.format(dataset_filename), 'r', encoding='latin-1') as f:
-			for i, line in enumerate(f):
-				# Skip every skip_every words.
-				if skip_every != -1 and (i + offset)%skip_every != 0:
-					continue
 
-				if lines%10000 == 0:
-					print('{} lines loaded...'.format(lines))
-				line = line.split()
-				if USE_PADDING:
-					line[0] = '#{}#'.format(line[0])
-					line[1] = '${}$'.format(line[1])
-				self.lexical_database[line[0]] = line[1]
-				self.substring_database[line[0]] = [[line[0][i:j] for j in range(i, len(line[0]) + 1) \
-					if j - i > 1] for i in range(0, len(line[0]) - 1)]
+		def format_name(prefix, f, use_padding):
+			nonlocal skip_every
+			nonlocal offset
+			formatted_name = '{}_{}_padding-{}'.format(prefix, f, use_padding)
+			# Append the skip factor if applicable.
+			formatted_name = formatted_name + '_skipping-every-' + str(skip_every) if skip_every != -1 else formatted_name
+			# Append offset if applicable.
+			formatted_name = formatted_name + '_offset-' + str(offset) if offset != 0 else formatted_name
+			return formatted_name
 
-				lines += 1
-				if verbose:
-					print('{}\n{}\n{}\n\n'.format(line[0], line[1], self.substring_database[line[0]]))
-		print('{} lines loaded.'.format(lines))
-		self.pm = PatternMatcher(self.lexical_database, dataset_filename, USE_PADDING, skip_every, offset)
-		# Save a copy of the lobotomized dataset, if applicable, for debug.
-		if skip_every == -1:
-			return
-		with open('Data/{}_skip-every-{}_offset-{}.txt'.format(dataset_filename, skip_every, offset), 'w', encoding='latin-1') as f:
-			arr = list(['{:20} {:20}\n'.format(key, self.lexical_database[key]) for key in self.lexical_database])
-			f.writelines(arr)
+		ld_name = format_name("ld", dataset_filename, False)
+		ldp_name = format_name("ld", dataset_filename, True)
+		sd_name = format_name("sd", dataset_filename, False)
+		sdp_name = format_name("sd", dataset_filename, True)
+
+		self.lexical_database = l.load(output_folder, ld_name)
+		self.lexical_database_pad = l.load(output_folder, ldp_name)
+		self.substring_database = l.load(output_folder, sd_name)
+		self.substring_database_pad = l.load(output_folder, sdp_name)
+
+		if self.lexical_database is None or self.lexical_database_pad is None \
+		or self.substring_database is None or self.substring_database_pad is None:
+			self.lexical_database = {}
+			self.substring_database = {}
+			self.lexical_database_pad = {}
+			self.substring_database_pad = {}
+			print('Loading lexical databases from text...')
+			# Load the input data.
+			with open('Preprocessing/Out/{}.txt'.format(dataset_filename), 'r', encoding='latin-1') as f:
+				def add_entry(lex, sub, a, b):
+					lex[a] = b
+					sub[a] = [[a[i:j] for j in range(i, len(a) + 1) \
+						if j - i > 1] for i in range(0, len(a) - 1)]
+
+				for i, line in enumerate(f):
+					# Skip every skip_every words.
+					if skip_every != -1 and (i + offset)%skip_every != 0:
+						continue
+
+					if lines%10000 == 0:
+						print('{} lines loaded...'.format(lines))
+					line = line.split()
+					# Add padded and nonpadded versions.
+					add_entry(self.lexical_database, self.substring_database, line[0], line[1])
+					add_entry(self.lexical_database_pad, self.substring_database_pad, '#{}#'.format(line[0]), '${}$'.format(line[1]))
+					lines += 1
+			print('{} lines loaded.'.format(lines))
+			# Save a copy of the dataset.
+			l.write(output_folder, ld_name, self.lexical_database)
+			l.write(output_folder, ldp_name, self.lexical_database_pad)
+			l.write(output_folder, sd_name, self.substring_database)
+			l.write(output_folder, sdp_name, self.substring_database_pad)
+
+		pm_name = format_name("optimized", dataset_filename, False)
+		pmp_name = format_name("optimized", dataset_filename, True)
+		self.pm = PatternMatcher(self.lexical_database, output_folder, pm_name, False, skip_every, offset)
+		self.pm_pad = PatternMatcher(self.lexical_database_pad, output_folder, pmp_name, True, skip_every, offset)
+
 
 	# Removes input word from the dataset before pronouncing if present.
-	# Returns 
-	def cross_validate_pronounce(self, input_word, verbose=False):
-		input_word = PronouncerByAnalogy.pad_if(input_word)
+	def cross_validate_pronounce(self, input_word, verbose=False, pad=True):
+		input_word = PronouncerByAnalogy.pad_if(input_word, pad)
+		ldb = self.lexical_database_pad if pad else self.lexical_database
+		sdb = self.substring_database_pad if pad else self.substring_database
 
 		trimmed_lexical_database = {}
 		trimmed_substring_database = {}
 		answer = ''
 		found = False
-		for word in self.lexical_database.keys():
+		for word in ldb.keys():
 			if word != input_word:
-				trimmed_lexical_database[word] = self.lexical_database[word]
-				trimmed_substring_database[word] = self.substring_database[word]
+				trimmed_lexical_database[word] = ldb[word]
+				trimmed_substring_database[word] = sdb[word]
 			else:
 				found = True
-				answer = self.lexical_database[word]
+				answer = ldb[word]
 				if verbose and not USE_EXPERIMENTAL_PATTERNMATCHER:
 					print('Removed {} ({}) from dataset.'.format(input_word, answer))
 		if not found:
@@ -168,7 +202,7 @@ class PronouncerByAnalogy:
 
 		pm = None
 		if USE_EXPERIMENTAL_PATTERNMATCHER:
-			pm = self.pm
+			pm = self.pm_pad if pad else self.pm
 			# Can't remove a word unless we have its representation.
 			if answer != '':
 				pm.remove(input_word, answer)
@@ -184,7 +218,7 @@ class PronouncerByAnalogy:
 
 		return results
 
-	def pronounce_sentence(self, input_sentence, multiprocess_words=True):
+	def pronounce_sentence(self, input_sentence, multiprocess_words=False, pad=True):
 		import time
 		time_before = time.perf_counter()
 		processed_sentence = input_sentence.lower()
@@ -196,11 +230,15 @@ class PronouncerByAnalogy:
 		results_list = []
 		pm = None
 		if USE_EXPERIMENTAL_PATTERNMATCHER:
-			pm = self.pm
+			pm = self.pm_pad if pad else self.pm
+
+		ldb = self.lexical_database_pad if pad else self.lexical_database
+		sdb = self.substring_database_pad if pad else self.substring_database
 
 		if not multiprocess_words:
 			for word in input_words:
-				results_list.append(PronouncerByAnalogy.pronounce(word, self.lexical_database, self.substring_database, pm=pm))
+				word = PronouncerByAnalogy.pad_if(word, pad)
+				results_list.append(PronouncerByAnalogy.pronounce(word, ldb, sdb, pm=pm))
 		else:
 			import multiprocessing as mp
 			num_processes = mp.cpu_count()
@@ -226,18 +264,27 @@ class PronouncerByAnalogy:
 
 	def test_pronounce(self, input_word, lexical_database, substring_database, verbose=False, attempt_bypass=False, pm=None):
 		results, duration, lattice = PronouncerByAnalogy.pronounce(input_word, lexical_database, substring_database, verbose=verbose, attempt_bypass=attempt_bypass, pm=pm, test_mode=True)
+		if verbose:
+			print('Completed in {} seconds.'.format(duration))
+			PronouncerByAnalogy.simple_print(results)
 		return results, duration, lattice
 
 	# Setting test_mode to True returns lattice for testing.
 	@staticmethod
 	def pronounce(input_word, lexical_database, substring_database, pm, verbose=False, attempt_bypass=False, test_mode=False):
-		input_word = PronouncerByAnalogy.pad_if(input_word)
+		# Check if we're using pad.
+		uses_padding = list(lexical_database)[0].startswith('#')
+		input_word = PronouncerByAnalogy.pad_if(input_word, uses_padding)
 		import time
 
 		if attempt_bypass and input_word in lexical_database:
+			time_before = time.perf_counter()
 			results = {'bypass': lexical_database[input_word]}
+			time_after = time.perf_counter()
 			if verbose:
 				PronouncerByAnalogy.simple_print(results)
+			if test_mode:
+				results = (results, time_after - time_before, None)
 			return results
 
 		if verbose:
@@ -253,7 +300,7 @@ class PronouncerByAnalogy:
 		time_before = time.perf_counter()
 		# New, optimized method with current PatternMatcher.
 		if pm is not None:
-			matches = pm.populate_optimized(input_word)
+			matches = pm.populate_optimized(input_word, verbose=False)
 			for match in matches:
 				key, alt_domain_representation, row_index, count = match
 				match_count += count
@@ -303,12 +350,12 @@ class PronouncerByAnalogy:
 			evaluation = 'CORRECT' if results[result].pronunciation == ground_truth else 'incorrect'
 			print('{}: {}, {}'.format(result, results[result], evaluation))
 		print('Ground truth: {}'.format(ground_truth))
-	def compare_experimental(self, input_word, verbose=False, pm=None):
+	def compare_experimental(self, input_word, verbose=False, pad=True):
 		pm = None
 		# Old method.
 		print('Old method:')
 		results1, dur1, lattice1 = pba.test_pronounce(input_word, self.lexical_database, self.substring_database, verbose=False, pm=pm)
-		pm = self.pm
+		pm = self.pm_pad if pad else self.pm
 		# New, experimental method.
 		print('Experimental:')
 		results2, dur2, lattice2 = pba.test_pronounce(input_word, self.lexical_database, self.substring_database, verbose=False, pm=pm)
@@ -327,30 +374,30 @@ if __name__ == "__main__":
 	MULTIPROCESS_LEGACY = False
 
 	# Huge lexical dataset.
-	pba = PronouncerByAnalogy("output_c_2023-11-11-09-08-47")
+	pba = PronouncerByAnalogy("Data/", "output_c_2023-11-11-09-08-47")
 	# A way to prune the dataset while keeping distribution relatively even across the alphabet.
-	#pba = PronouncerByAnalogy("output_c_2023-11-11-09-08-47", skip_every=2000, offset=1)
+	#pba = PronouncerByAnalogy("Data/", "output_c_2023-11-11-09-08-47", skip_every=2000, offset=1)
 
 	# Run a test that guarantees optimized dict structure will remain the same throughout cross validation
 	#print('\nAscertain removing and adding back each word does not change the optimized dict:')
 	#pba.pm.simulate_leaveoneout(pba.lexical_database, check_every=10000)
 
-	#print('\nCompare old pattern matching method to new, optimized method\n(Bypasses USE_EXPERIMENTAL_PATTERNMATCHER flag):\n')
-	#pba.compare_experimental('placable', verbose=True)
+	print('\nCompare old pattern matching method to new, optimized method\n(Bypasses USE_EXPERIMENTAL_PATTERNMATCHER flag):\n')
+	pba.compare_experimental('placable', verbose=True)
 
-	#print('\nPronounce a word with the new method.\n')
-	#pba.pronounce('the', pba.lexical_database, pba.substring_database, pba.pm, attempt_bypass=False, verbose=True)
+	print('\nPronounce a word with the new method.\n')
+	pba.pronounce('the', pba.lexical_database_pad, pba.substring_database_pad, pba.pm_pad, attempt_bypass=False, verbose=True)
 
-	#print('\nPronounce a sentence with the new method:\n')
-	#pba.pronounce_sentence('The QUICK brown FOX jumps OVER the LAZY dog.', multiprocess_words=False)
+	print('\nPronounce a sentence with the new method:\n')
+	pba.pronounce_sentence('The QUICK brown FOX jumps OVER the LAZY dog.')
 
-	#print('\nTesting a word that is clearly not in the dataset\n(Bypasses USE_EXPERIMENTAL_PATTERNMATCHER flag):')
-	#print('Notice how pathfinding via breadth-first-search is the current performance bottleneck.')
-	#pba.pronounce('solsolsolsolsol', pba.lexical_database, pba.substring_database, pba.pm, verbose=True)
+	print('\nTesting a word that is clearly not in the dataset\n(Bypasses USE_EXPERIMENTAL_PATTERNMATCHER flag):')
+	print('Notice how pathfinding via breadth-first-search is the current performance bottleneck.')
+	pba.pronounce('solsolsolsolsol', pba.lexical_database, pba.substring_database, pba.pm, verbose=True)
 
-	#print('\nRemove the test word from the dataset before attempt:\n')
-	#pba.cross_validate_pronounce('testing', verbose=True)
+	print('\nRemove the test word from the dataset before attempt:\n')
+	pba.cross_validate_pronounce('testing', verbose=True)
 
 	#print('\nCross validate with the new method.\n')
-	#pba.cross_validate()
+	#pba.cross_validate(pad=True)
 
