@@ -93,6 +93,7 @@ class PatternMatcher:
 
 	# Returns a list of tuples of the form (substr, phonemes[i : i + len(substr)], index, count(!))
 	def populate_optimized(self, input_word, verbose=False):
+		import re
 		# A shorter way to refer to the optimized dict
 		raw_counts = self.substring_to_alt_domain_count_dict
 		# Any matching key/representation pair with length l >= 3 has two subkeys/sub_representations of length length l - 1. 
@@ -113,7 +114,7 @@ class PatternMatcher:
 		def make_hash(key, representation, index=-1):
 			if index == -1:
 				return '{}({})'.format(key, representation)
-			return '{}({}), {}'.format(key, representation, index)
+			return '[{}] {}({})'.format(index, key, representation)
 		# Given some parent, propagate ITS parents and their raw counts downward, if applicable, as well as the remaining
 		# counts not accounted for by those parents (see the comment below);
 		# OR propagate only its own raw counts downward.
@@ -136,6 +137,7 @@ class PatternMatcher:
 					print('  {} itself is a greatest common ancestor'.format(parent_hash))
 				# No previous parent pointed me to their counts.
 				# I therefore must propagate myself downward as the greatest common ancestor to my children.
+
 				left_child_set.add((key, representation, raw_counts[key][representation], index))
 				right_child_set.add((key, representation, raw_counts[key][representation], index))
 			else:
@@ -205,9 +207,29 @@ class PatternMatcher:
 							print('  {}\'s logged successors: {}'.format(key_rep_hash, child_hash_to_ancestor_set_and_counts[key_rep_hash]))
 						for ancestor_key, ancestor_representation, effective_ancestor_count, ancestor_index in child_hash_to_ancestor_set_and_counts[key_rep_hash]:
 							ancestor_hash = make_hash(ancestor_key, ancestor_representation, ancestor_index)
-							subset_of_optimized_dict[(key, row_index)][representation] -= effective_ancestor_count
+							# Count the occurrences of match within ancestor.
+							# The length will be 1 for the vast majority of cases, but for instance
+							# match "in (in)" occurs twice in its ancestor "inin (inin)" and so must be decremented by twice inin (inin)'s count, too.
+							letter_occurrences_in_ancestor = [m.start() for m in re.finditer('(?={})'.format(key), ancestor_key)]
+							factor = 1
+							if len(letter_occurrences_in_ancestor) > 1:
+								altrep_occurrences_in_ancestor = [m.start() for m in re.finditer('(?={})'.format( \
+									representation.replace('*', '\\*')), ancestor_representation.replace('*', '\\*'))]
+								# Intersect the two -- that is, disregard alternate representations without matching letters beginning at the same index and vice versa.
+								occurrences_in_ancestor = set(letter_occurrences_in_ancestor).intersection(set(altrep_occurrences_in_ancestor))
+								factor = len(occurrences_in_ancestor)
+							subset_of_optimized_dict[(key, row_index)][representation] -= effective_ancestor_count * factor
 							if verbose:
+								# it SEEMS as though "in" needs to get decremented by "inin" twice but is only doing so once.
+								# confirm that "in"'s innacuracy is this word's problem (piccinini) before proceeding.
+								# solution of forcing words to only increment once per word is inaccurate.
+								# When should decrementation occur? By what process?
+								# Maybe decrement by the NUMBER OF INSTANCES child representation exists within parent representation?
+								# But how would that scale: multiply counts by that factor? TODO: figure this out.
 								print('  Removed {} occurrences common to ancestor {}.'.format(effective_ancestor_count, ancestor_hash))
+								if len(occurrences_in_ancestor) != 1:
+									print('  Multiplied decrement by {} because {} occurs in {} that many times.'.format( \
+										len(occurrences_in_ancestor), key_rep_hash, ancestor_hash))
 								print('  {} now has {} occurrences.'.format(key_rep_hash, subset_of_optimized_dict[(key, row_index)][representation]))
 					# Short ones have no children.
 					if len(key) >= 3:

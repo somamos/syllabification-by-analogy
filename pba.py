@@ -121,7 +121,6 @@ class PronouncerByAnalogy:
 					print('{}\n{}\n{}\n\n'.format(line[0], line[1], self.substring_database[line[0]]))
 		print('{} lines loaded.'.format(lines))
 		self.pm = PatternMatcher(self.lexical_database, dataset_filename, skip_every, offset)
-		self.opm = OldPatternMatcher()
 		# Save a copy of the lobotomized dataset, if applicable, for debug.
 		if skip_every == -1 and offset == 0:
 			return
@@ -307,7 +306,7 @@ if __name__ == "__main__":
 	pba = PronouncerByAnalogy("output_c_2023-11-11-09-08-47")
 	# Very small lexical dataset for testing.
 	#pba = PronouncerByAnalogy("test_case")
-	pba.compare_experimental('table', verbose=True)
+	pba.compare_experimental('inininin', verbose=True)
 	#pba.pronounce('table', pba.lexical_database, pba.substring_database, pba.pm, verbose=True)
 
 	# Uncomment below to run a test that guarantees optimized dict structure will remain the same throughout cross validation
