@@ -7,9 +7,24 @@ from patternmatcher import PatternMatcher
 from oldpatternmatcher import OldPatternMatcher
 
 USE_EXPERIMENTAL_PATTERNMATCHER = True
+# Takes longer, but potentially yields better results by linking certain phonemes to word borders.
+# Attempting to pronounce "the" without padding yields "D-R", but with padding yields (correctly) "D-x".
+USE_PADDING = True
 MULTIPROCESS_LEGACY = False
 
 class PronouncerByAnalogy:
+	# Repeatedly calling this needs to be safe, because
+	# cross_validate_pronounce calls pronounce, but the user
+	# might call either of those with a padded or non-padded input.
+	@staticmethod
+	def pad_if(s):
+		# Therefore we remove padding if present at the start.
+		s = s[1:-1] if s.startswith('#') and s.endswith('#') else s
+		# Add it back if needed.
+		if USE_PADDING:
+			s = '#{}#'.format(s)
+		return s
+
 	def cross_validate(self, start=0):
 		from datetime import datetime
 		from collections.abc import Iterable
@@ -111,7 +126,9 @@ class PronouncerByAnalogy:
 				if lines%10000 == 0:
 					print('{} lines loaded...'.format(lines))
 				line = line.split()
-
+				if USE_PADDING:
+					line[0] = '#{}#'.format(line[0])
+					line[1] = '${}$'.format(line[1])
 				self.lexical_database[line[0]] = line[1]
 				self.substring_database[line[0]] = [[line[0][i:j] for j in range(i, len(line[0]) + 1) \
 					if j - i > 1] for i in range(0, len(line[0]) - 1)]
@@ -120,9 +137,9 @@ class PronouncerByAnalogy:
 				if verbose:
 					print('{}\n{}\n{}\n\n'.format(line[0], line[1], self.substring_database[line[0]]))
 		print('{} lines loaded.'.format(lines))
-		self.pm = PatternMatcher(self.lexical_database, dataset_filename, skip_every, offset)
+		self.pm = PatternMatcher(self.lexical_database, dataset_filename, USE_PADDING, skip_every, offset)
 		# Save a copy of the lobotomized dataset, if applicable, for debug.
-		if skip_every == -1 and offset == 0:
+		if skip_every == -1:
 			return
 		with open('Data/{}_skip-every-{}_offset-{}.txt'.format(dataset_filename, skip_every, offset), 'w', encoding='latin-1') as f:
 			arr = list(['{:20} {:20}\n'.format(key, self.lexical_database[key]) for key in self.lexical_database])
@@ -131,6 +148,7 @@ class PronouncerByAnalogy:
 	# Removes input word from the dataset before pronouncing if present.
 	# Returns 
 	def cross_validate_pronounce(self, input_word, verbose=False):
+		input_word = PronouncerByAnalogy.pad_if(input_word)
 
 		trimmed_lexical_database = {}
 		trimmed_substring_database = {}
@@ -151,15 +169,18 @@ class PronouncerByAnalogy:
 		pm = None
 		if USE_EXPERIMENTAL_PATTERNMATCHER:
 			pm = self.pm
-			pm.remove(input_word, answer)
+			# Can't remove a word unless we have its representation.
+			if answer != '':
+				pm.remove(input_word, answer)
 
 		results = PronouncerByAnalogy.pronounce(input_word, trimmed_lexical_database, trimmed_substring_database, verbose=False, pm=pm)
 		if verbose:
 			PronouncerByAnalogy.simple_print(results, answer)
 
 		if USE_EXPERIMENTAL_PATTERNMATCHER:
-			# Add back the word.
-			pm.replace(input_word, answer)
+			# Add back the word, but only if we removed it in the first place.
+			if answer != '':
+				pm.replace(input_word, answer)
 
 		return results
 
@@ -210,10 +231,14 @@ class PronouncerByAnalogy:
 	# Setting test_mode to True returns lattice for testing.
 	@staticmethod
 	def pronounce(input_word, lexical_database, substring_database, pm, verbose=False, attempt_bypass=False, test_mode=False):
+		input_word = PronouncerByAnalogy.pad_if(input_word)
 		import time
 
 		if attempt_bypass and input_word in lexical_database:
-			return {'bypass': lexical_database[input_word]}
+			results = {'bypass': lexical_database[input_word]}
+			if verbose:
+				PronouncerByAnalogy.simple_print(results)
+			return results
 
 		if verbose:
 			print('Building pronunciation lattice for "{}"...'.format(input_word))
@@ -313,8 +338,8 @@ if __name__ == "__main__":
 	#print('\nCompare old pattern matching method to new, optimized method\n(Bypasses USE_EXPERIMENTAL_PATTERNMATCHER flag):\n')
 	#pba.compare_experimental('placable', verbose=True)
 
-	print('\nPronounce a word with the new method.\n')
-	pba.pronounce('table', pba.lexical_database, pba.substring_database, pba.pm, verbose=True)
+	#print('\nPronounce a word with the new method.\n')
+	#pba.pronounce('the', pba.lexical_database, pba.substring_database, pba.pm, attempt_bypass=False, verbose=True)
 
 	#print('\nPronounce a sentence with the new method:\n')
 	#pba.pronounce_sentence('The QUICK brown FOX jumps OVER the LAZY dog.', multiprocess_words=False)
@@ -328,3 +353,4 @@ if __name__ == "__main__":
 
 	#print('\nCross validate with the new method.\n')
 	#pba.cross_validate()
+
