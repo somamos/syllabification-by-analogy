@@ -53,7 +53,7 @@ class Lattice:
 			#if any(self.from_words):
 			#	return '\n{}{}{}({}{}{}): {},  (from words {})'.format(self.from_node.phoneme, self.intermediate_phonemes, self.to_node.phoneme, \
 			#		self.from_node.matched_letter, self.intermediate_letters, self.to_node.matched_letter, self.count, self.from_words)			
-			return '{}{}{}({}{}{}): {}'.format(self.from_node.matched_letter, self.intermediate_letters, self.to_node.matched_letter,\
+			return '[{}] {}{}{}({}{}{}): {}'.format(self.from_node.index, self.from_node.matched_letter, self.intermediate_letters, self.to_node.matched_letter,\
 				self.from_node.phoneme, self.intermediate_phonemes, self.to_node.phoneme, self.count)
 		def __hash__(self):
 			return hash((self.from_node, self.intermediate_phonemes, self.to_node))
@@ -549,8 +549,8 @@ class Lattice:
 
 		out = ''
 		out += 'Arcs with greater counts in A:\n'
-		out += '\n'.join('{} vs {}'.format(str(arc[0]), str(arc[1])) for arc in a_surplus) if len(a_surplus) else '  None.\n'
-		out += 'Arcs with fewer counts in A:\n'
+		out += '\n'.join('  {} vs {}'.format(str(arc[0]), str(arc[1])) for arc in a_surplus) if len(a_surplus) else '  None.'
+		out += '\nArcs with fewer counts in A:\n'
 		out += '\n'.join('  {} vs {}'.format(str(arc[0]), str(arc[1])) for arc in a_shortage) if len(a_shortage) else '  None.\n'
 		print(out)
 
