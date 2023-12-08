@@ -382,6 +382,8 @@ if __name__ == "__main__":
 	#print('\nAscertain removing and adding back each word does not change the optimized dict:')
 	#pba.pm.simulate_leaveoneout(pba.lexical_database, check_every=10000)
 
+	pba.cross_validate_pronounce('authentication', verbose=True)
+
 	print('\nCompare old pattern matching method to new, optimized method\n(Bypasses USE_EXPERIMENTAL_PATTERNMATCHER flag):\n')
 	pba.compare_experimental('placable', verbose=True)
 
@@ -397,7 +399,6 @@ if __name__ == "__main__":
 
 	print('\nRemove the test word from the dataset before attempt:\n')
 	pba.cross_validate_pronounce('testing', verbose=True)
-
 	#print('\nCross validate with the new method.\n')
 	#pba.cross_validate(pad=True)
 

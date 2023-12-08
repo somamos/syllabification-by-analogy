@@ -64,40 +64,28 @@ class Lattice:
 
 	class Candidate:
 		# Initialize candidate as empty or as shallow copy.
-		def __init__(self, other=None):
+		def __init__(self, parent, arcs=None):
 			# Init as empty.
-			if other == None:
-				self.path = [] # Includes all nodes.
-				self.arcs = [] # Arcs only.
-				# path_strings need to remain fluid during the breadth-first search, because 
-				# to "pop" an arc involves the removal of any number of intermediate phonemes.
-				self.path_strings = []
-				# path_strings get merged into pronunciation after path is completed.
-				self.pronunciation = ''
-				self.arc_count_sum = 0
-				self.arc_count_product = 1
-				self.sum_of_products = 0
-				self.frequency_of_same_pronunciation = 1 # There's at least one with this pronunciation -- itself.
-				self.length = 0
-				self.path_structure_standard_deviation = 0
-				self.weakest_link = 0
-				self.number_of_different_symbols = 0
-				return
-			# Init as shallow copy.
-			# Path and path string.
-			self.path = other.path[:]
-			self.arcs = other.arcs[:]
-			self.path_strings = other.path_strings[:]
-			self.pronunciation = other.pronunciation
-			# Heuristics.
-			self.length = other.length
-			self.arc_count_sum = other.arc_count_sum
-			self.arc_count_product = other.arc_count_product
-			self.sum_of_products = other.sum_of_products
-			self.frequency_of_same_pronunciation = other.frequency_of_same_pronunciation
-			self.path_structure_standard_deviation = other.path_structure_standard_deviation
-			self.weakest_link = other.weakest_link
+			self.path = [] # Includes all nodes.
+			self.arcs = [] # Arcs only.
+			# path_strings need to remain fluid during the breadth-first search, because 
+			# to "pop" an arc involves the removal of any number of intermediate phonemes.
+			self.path_strings = []
+			# path_strings get merged into pronunciation after path is completed.
+			self.pronunciation = ''
+			self.arc_count_sum = 0
+			self.arc_count_product = 1
+			self.sum_of_products = 0
+			self.frequency_of_same_pronunciation = 1 # There's at least one with this pronunciation -- itself.
+			self.length = 0
+			self.path_structure_standard_deviation = 0
+			self.weakest_link = 0
 			self.number_of_different_symbols = 0
+			if arcs == None:
+				return
+			for arc in arcs:
+				self.update(parent, arc)
+			self.solidify()
 		# Finalizes path_strings (only run this when a path is complete.)
 		def solidify(self):
 			self.pronunciation = ''.join(self.path_strings)
@@ -138,13 +126,13 @@ class Lattice:
 			self.path_strings = self.path_strings[:-2]
 
 	# Initialize pronunciation lattice.
-	# Breadth-first search will print # candidate paths every RECURRENCES_PER_PRINT. 
+	# Breadth-first search will print # candidate paths every ITERATIONS_PER_PRINT. 
 	# Breadth-first search will give up after QUIT_THRESHOLD recurrences.
 	# The default values are tuned to terminate the dataset's longest word, "supercalifragilisticexpialidocious,"
 	# after a couple of minutes.
-	def __init__(self, letters, RECURRENCES_PER_PRINT=2500000, QUIT_THRESHOLD=25000000):
+	def __init__(self, letters, ITERATIONS_PER_PRINT=25000, QUIT_THRESHOLD=1000000):
 		self.letters = letters
-		self.RECURRENCES_PER_PRINT = RECURRENCES_PER_PRINT
+		self.ITERATIONS_PER_PRINT = ITERATIONS_PER_PRINT
 		self.QUIT_THRESHOLD	= QUIT_THRESHOLD
 
 		self.nodes = {}
@@ -174,77 +162,74 @@ class Lattice:
 	def print_nodes(self):
 		for node in self.nodes:
 			print('Node {} has {} arcs into it and {} arcs out of it.'.format(node.matched_letter + node.phoneme + str(node.index), len(node.from_arcs), len(node.to_arcs)))
-	# Lists all paths via breadth-first search.
+
 	def find_all_paths(self, verbose = False):
-		#self.print_arcs()
-		print('Finding paths...')
-		import sys
-		min_length = sys.maxsize
+		from collections import deque
+		import time
+		time_before = time.perf_counter()
 		
-		# Link unrepresented bigrams.
-		# fixes the silence problem.
 		self.link_unrepresented()
-		# While helpful, this will not suffice. An extant bigram STILL
-		# may not have any paths that lead into it if phonemes don't match.
-		# We will keep track of furthest_index and attempt to manually dig further
-		# if no paths exist.
 		furthest_index = 0
-
-		candidates = []
-
 		overflow = False
-		util_call_count = 0
-		def util(u, d, candidate_buffer):
+		
+		def bfs(start, end):
+			import sys
+			iter_count = 0
+			min_length = sys.maxsize
 			nonlocal overflow
-			nonlocal min_length
 			nonlocal furthest_index
-			nonlocal util_call_count
-			if util_call_count != 0 and util_call_count%self.RECURRENCES_PER_PRINT == 0:
-				print('Recurred {} times. {} candidates found.'.format(util_call_count, len(candidates)))
-			util_call_count += 1
-			if util_call_count > self.QUIT_THRESHOLD:
-				overflow = True
-				return
-			u.visited = True
-			furthest_index = u.index if u.index > furthest_index else furthest_index
-			if u == d:
-				complete_candidate = self.Candidate(candidate_buffer)
-				complete_candidate.solidify()
-				candidates.append(complete_candidate) # Append a copy.
-				if verbose:
-					print(complete_candidate.pronunciation, complete_candidate.arc_count_product)
-				if candidate_buffer.length < min_length:
-					min_length = candidate_buffer.length
-			elif candidate_buffer.length < min_length:
-				for arc in u.to_arcs:
-					v = arc.to_node
-					candidate_buffer.update(self, arc) # Append arc to buffer with its nodes and heuristics. 
-					if v.visited == False:
-						util(v, d, candidate_buffer) # Recur over successor node.
-					candidate_buffer.pop(self) # Wipe candidate buffer.
-			u.visited = False # Allow future revisiting.
-		last_furthest_index = -1
-		while furthest_index < len(self.letters) and not overflow:
-			if furthest_index == last_furthest_index:
+
+			queue = deque([([start], [])])  # Each item in the queue is a tuple (nodes, arcs)
+			paths = []
+			while queue:
+				# Avoid searching for too long.
+				if iter_count != 0 and iter_count%self.ITERATIONS_PER_PRINT == 0:
+					print('Iterated {} times. {} paths found.'.format(iter_count, len(paths)))
+				iter_count += 1
+				if iter_count > self.QUIT_THRESHOLD:
+					overflow = True
+					return
+
+				nodes, arcs = queue.popleft()
+				node = nodes[-1]
+				furthest_index = node.index if node.index > furthest_index else furthest_index
+
+				if node == end:
+					min_length = len(arcs)
+					paths.append(arcs)
+				elif len(arcs) + 1 > min_length:
+					continue
+				for arc in node.to_arcs:
+					neighbor = arc.to_node
+					if neighbor not in nodes:
+						queue.append((nodes + [neighbor], arcs + [arc]))
+			return paths
+
+		prev_furthest_index = -1
+		while (furthest_index < len(self.letters)):
+			paths = bfs(self.START_NODE, self.END_NODE)
+			# Various error handling:
+			if furthest_index == prev_furthest_index:
 				print('Progress has stopped.')
 				return NO_PATHS_FOUND
-			# Set visited to False for all.
-			for node in self.nodes.values():
-				node.visited = False
-			candidate_buffer = self.Candidate()
-			# Begin breadth-first search listing all paths.
-			util(self.START_NODE, self.END_NODE, candidate_buffer)
-			if len(candidates) > 0:
-				continue
-			print('Warning. No paths were found. Furthest index: {}'.format(furthest_index))
-			# Patch every gap associated with the pair of letters beginning at that index.
+			if overflow:
+				return SEARCHED_TOO_LONG
+			if len(paths) > 0:
+				break
+			print('WARNING. No paths found. Attempting to patch gap at index {}:'.format(furthest_index))
 			self.link_silences(furthest_index)
-			last_furthest_index = furthest_index
-		if overflow:
-			print('Path threshold reached. Skipping.')
-			return SEARCHED_TOO_LONG
+			prev_furthest_index = furthest_index
+
+		candidates = []
 		if verbose:
-			print('{} Paths found.'.format(len(candidates)))
+			print('CANDIDATES FOUND:')
+		for path in paths:
+			candidates.append(self.Candidate(self, path))
+			if verbose:
+				print("{}, length: {}".format(candidates[-1].pronunciation, len(candidates[-1].arcs)))
+
+		duration = time.perf_counter() - time_before
+		print('Found {} paths in {} seconds'.format(len(candidates), duration))
 		return candidates
 
 	# Count identical pronunciations generating
