@@ -293,7 +293,7 @@ class PronouncerByAnalogy:
 		pl = Lattice(input_word)
 
 		# Bigrams unrepresented in the dataset will cause gaps in lattice paths.
-		pl.flag_unrepresented_bigrams(input_word, lexical_database)
+		#pl.flag_unrepresented_bigrams(input_word, lexical_database)
 
 		# Populate lattice.
 		match_count = 0
@@ -381,6 +381,9 @@ if __name__ == "__main__":
 	# Run a test that guarantees optimized dict structure will remain the same throughout cross validation
 	#print('\nAscertain removing and adding back each word does not change the optimized dict:')
 	#pba.pm.simulate_leaveoneout(pba.lexical_database, check_every=10000)
+	pba.pronounce_sentence('The QUICK qzqzxz FOX jumps OVER the LAZY dog.')
+	#import cProfile
+	#cProfile.runctx('g(x)', {'x': 'The QUICK brown FOX jumps OVER the LAZY dog.', 'g': pba.pronounce_sentence}, {})
 
 	pba.cross_validate_pronounce('authentication', verbose=True)
 
@@ -399,6 +402,7 @@ if __name__ == "__main__":
 
 	print('\nRemove the test word from the dataset before attempt:\n')
 	pba.cross_validate_pronounce('testing', verbose=True)
+	
 	#print('\nCross validate with the new method.\n')
 	#pba.cross_validate(pad=True)
 

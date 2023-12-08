@@ -168,7 +168,6 @@ class Lattice:
 		import time
 		time_before = time.perf_counter()
 		
-		self.link_unrepresented()
 		furthest_index = 0
 		overflow = False
 		
@@ -604,7 +603,7 @@ class Lattice:
 
 	# Fix the silence problem.
 	# Every node at index furthest should link to every node at furthest + 1.
-	# (Thanks to link_unrepresented, a node at every index is guaranteed to exist.)
+	# If there is no node at a given index, add one.
 	def link_silences(self, furthest):
 		import re
 		# Link every node at index i to every node at index i + 1.
@@ -618,6 +617,9 @@ class Lattice:
 					furthest_reached_nodes.append(self.nodes[hash_])
 				elif self.nodes[hash_].index == i + 1:
 					nodes_beyond.append(self.nodes[hash_])
+			if len(nodes_beyond) == 0:
+				# TODO: Get this to work with Syllabification (which does not expect '-')
+				nodes_beyond.append(self.Node(self.letters[i + 1], '-', i + 1))
 			print('Adding {} x {} arcs'.format(len(furthest_reached_nodes), len(nodes_beyond)))
 			for from_node in furthest_reached_nodes:
 				for to_node in nodes_beyond:
@@ -633,55 +635,3 @@ class Lattice:
 		for index in indices:
 			link(index)
 		print('Successfully added {} arcs.'.format(added_count))
-
-	# Prophylactic measure.
-	# Adds nodes between gaps in paths to solve the "silence problem."
-	def link_unrepresented(self):
-		if not len(self.unrepresented_bigrams):
-			return
-		for item in self.unrepresented_bigrams:
-			start_index = item[0]
-			end_index = start_index + 1
-			bigram = item[1]
-			start_char = bigram[0]
-			end_char = bigram[1]
-			#print('{}: {} at {}, {} at {}'.format(self.letters, start_char, start_index, end_char, end_index))
-			# Nodes ending at start_index
-			nodes_at_start_index = [node for node in self.nodes.values() if node.index == start_index]
-			# Nodes starting at end_index
-			nodes_at_end_index = [node for node in self.nodes.values() if node.index == end_index]
-			# Because we're iterating from left onward, we know nodes_at_start_index must be populated.
-			if not len(nodes_at_start_index):
-				# This will only be a problem if the input has not been sanitized.
-				print('No nodes started with {}.'.format(start_char))
-				exit()
-			# Nodes at end index, however, cannot be guaranteed to exist.
-			if not len(nodes_at_end_index):
-				nodes_at_end_index.append(self.Node(end_char, '-', end_index))
-
-			# Now link all nodes at start to nodes at end through new arcs.
-			for start_node in nodes_at_start_index:
-				for end_node in nodes_at_end_index:
-					self.add(start_node.matched_letter + end_node.matched_letter, \
-						start_node.phoneme + end_node.phoneme, start_index)
-
-	# Solves the "silence problem" as documented by M&D in
-	# "Can syllabification improve pronunciation by analogy of English?"
-	# The silence problem occurs when a letter pair in the input word
-	# does not exist in the dataset.
-	def flag_unrepresented_bigrams(self, input_word, database):
-		represented_bigrams = set()
-		keys = list(database.keys())
-		# For each word.
-		for word in keys:
-			# For each bigram.
-			for index in range (0, len(word) - 2):
-				bigram = word[index] + word[index + 1]
-				represented_bigrams.add(bigram)
-		unrepresented_bigrams = []
-		for x in range(0, len(input_word) - 2):
-			bigram = input_word[x] + input_word[x + 1]
-			if bigram not in represented_bigrams:
-				unrepresented_bigrams.append((x, bigram))
-
-		self.unrepresented_bigrams = unrepresented_bigrams
