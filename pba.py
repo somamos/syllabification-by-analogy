@@ -109,6 +109,8 @@ class PronouncerByAnalogy:
 	# skip_every is -1 (disabled) or >= 2. Generates smaller datasets for easier testing.
 	def __init__(self, output_folder, dataset_filename, skip_every=-1, offset=0, verbose=False):
 		import loader as l
+		import os
+
 
 		self.dataset_filename = dataset_filename
 		self.skip_every = skip_every
