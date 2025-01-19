@@ -9,6 +9,7 @@ class SyllabifierByAnalogy():
 	def cross_validate(self, start=0):
 		from datetime import datetime
 		from collections.abc import Iterable
+		import os
 		now = datetime.today().strftime('%Y-%m-%d-%H-%M-%S')
 		total = 0
 		trial = start
@@ -20,6 +21,10 @@ class SyllabifierByAnalogy():
 		words_total = {}
 		junctures_correct = {}
 		junctures_total = {}
+
+		if not os.path.exists('Data'):
+			os.makedirs('Data')
+
 		with open('Data/Syllabification_Results_{}.txt'.format(now), 'w', encoding='latin-1') as f:
 			def end_trial(output):
 				nonlocal trial
