@@ -128,9 +128,6 @@ class SyllabifierByAnalogy():
 		# Construct lattice.
 		self.pl = Lattice(input_word)
 
-		# Bigrams unrepresented in the dataset will cause gaps in lattice paths.
-		self.pl.flag_unrepresented_bigrams(input_word, lexical_database)
-
 		# Second fastest.
 		# The original method of Dedina and Nusbaum. Words begin left-aligned and end right-aligned.
 		def populate_legacy():
