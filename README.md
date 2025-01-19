@@ -1,3 +1,11 @@
+# TLDR:
+
+This repository implements the 'by analogy' methods described [here](https://github.com/somamos/syllabification-by-analogy/files/13186641/Damper.Marchand.s.Can.syllabification.improve.pronunciation.by.analogy.of.English.pdf) and [here](https://github.com/somamos/syllabification-by-analogy/files/13280320/089120100561674.pdf).
+
+The pre-processor implements the 'expectation-maximization-like' algorithm described [here](https://eprints.soton.ac.uk/260616/1/06-DAMPER.pdf).
+
+Continue reading if you dare.
+
 # syllabification-by-analogy
 
 Syllabification by Analogy (SbA) is a way to infer syllable divisions of an unknown word. 
@@ -19,7 +27,7 @@ Lattice construction gets a **HUGE performance boost**! Thanks to precalculating
 New `patternmatcher.py` converts a lexical database of the form `{'word': 'phonemes'}` into an optimized dict of the form `{'substring': {'phonemes_1': count_1, 'phonemes_2': count_2, ...}}` -- that is, a dict of every letter substring mapped to an _inner_ dict of all its alternate domain representations, each one mapped to the number of times that representation aligns with that substring, i.e. `{sauce: {'sc--s': 6, 's-Wse': 2, 'sc-sx': 1}}`.
 
 ## Surpassing the original paper's results! (11/11/2023)
-The "leave-one-out" cross validation tests for __pronunciation by analogy__ AND __syllabification by analogy__ are complete. Compared to the results of M&D's original publication, this repository demonstrates considerable pronunciation improvement (below, left) and modest syllabification improvement (below, right), probably due to a greater number of words in the lexical database (58,989 versus 19,594).
+The "leave-one-out" cross validation tests for __pronunciation by analogy__ AND __syllabification by analogy__ are complete. Compared to the results of M&D's original publication, this repository demonstrates considerable pronunciation improvement (below, left) and modest syllabification improvement (below, right), probably due to a greater number of words in the lexical database (ours has 58,989. M&D's had 19,594).
 
 ![results_](https://github.com/somamos/syllabification-by-analogy/assets/141623014/f39516db-cd8d-4e1a-a0e5-8e99fd0dc45a)
 
