@@ -134,6 +134,9 @@ class PronouncerByAnalogy:
 		sd_name = format_name("sd", dataset_filename, False)
 		sdp_name = format_name("sd", dataset_filename, True)
 
+		if not os.path.exists(output_folder):
+			os.makedirs(output_folder)
+
 		self.lexical_database = l.load(output_folder, ld_name)
 		self.lexical_database_pad = l.load(output_folder, ldp_name)
 		self.substring_database = l.load(output_folder, sd_name)
