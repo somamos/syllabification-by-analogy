@@ -35,7 +35,7 @@ The "leave-one-out" cross validation tests for __pronunciation by analogy__ AND 
 
 Written on MacOS with Python 3.8.2 and Windows with Python 3.11.0.
 
-As of 11/17/2023, all preprocessed datasets are tracked with the repository -- no preprocessing needed! Just run `python pba.py` from the repository location after cloning. The top-level code has a few methods to get you started.
+As of 11/17/2023, all preprocessed datasets are tracked with the repository -- no preprocessing needed! Just run `python pba.py` from the repository location after cloning. The top-level code has a few sample functions to get you started.
 
 The repository currently consists of 
 
